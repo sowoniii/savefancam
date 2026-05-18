@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { getFontEmbedCSS, toPng } from 'html-to-image';
+import { toPng } from 'html-to-image';
 
 const fetchBase64Image = async (url: string): Promise<string> => {
   try {
@@ -26,6 +26,44 @@ let cachedSpImage = '';
 let cachedSpIcon = '';
 let cachedFontEmbedCSS = '';
 
+const CAPTURE_CSS_WIDTH = 480;
+const CAPTURE_PIXEL_RATIO = 2;
+const MAX_CANVAS_DIMENSION = 32767;
+const MAX_CAPTURE_SLICE_HEIGHT = Math.floor(MAX_CANVAS_DIMENSION / CAPTURE_PIXEL_RATIO) - 16;
+const MIN_CAPTURE_SLICE_HEIGHT = 1024;
+
+const buildFontEmbedCSS = async () => {
+  const [regular, medium, bold] = await Promise.all([
+    fetchBase64Image('/AppleSDGothicNeoR.ttf'),
+    fetchBase64Image('/AppleSDGothicNeoM.ttf'),
+    fetchBase64Image('/AppleSDGothicNeoB.ttf'),
+  ]);
+
+  return `
+    @font-face {
+      font-family: "Apple SD Gothic Neo";
+      font-weight: 400;
+      font-style: normal;
+      font-display: block;
+      src: url("${regular}") format("truetype");
+    }
+    @font-face {
+      font-family: "Apple SD Gothic Neo";
+      font-weight: 500;
+      font-style: normal;
+      font-display: block;
+      src: url("${medium}") format("truetype");
+    }
+    @font-face {
+      font-family: "Apple SD Gothic Neo";
+      font-weight: 700;
+      font-style: normal;
+      font-display: block;
+      src: url("${bold}") format("truetype");
+    }
+  `;
+};
+
 interface CaptureButtonProps {
   title: string;
   postId: string;
@@ -39,6 +77,7 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
     setIsCapturing(true);
 
     let clone: HTMLElement | null = null;
+    let wrapper: HTMLElement | null = null;
 
     try {
       // Find the grid container (contains the title, body, and comments)
@@ -77,7 +116,7 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
       }
 
       // Empty the text inside .sp-reload so it never bleeds or floats up due to negative text-indent SVG limits
-      clone.querySelectorAll('.sp-reload').forEach((el: any) => {
+      clone.querySelectorAll<HTMLElement>('.sp-reload').forEach((el) => {
         el.textContent = '';
       });
 
@@ -88,14 +127,14 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
 
       // Remove lazy loading attributes from all cloned images to prevent the browser's SVG engine
       // from suspending the rendering inside <foreignObject>
-      clonedImages.forEach((img: any) => {
+      clonedImages.forEach((img) => {
         img.removeAttribute('loading');
         img.removeAttribute('srcset');
         img.removeAttribute('sizes');
       });
 
       await Promise.all(
-        Array.from(clonedImages).map(async (clonedImg: any, index: number) => {
+        Array.from(clonedImages).map(async (clonedImg, index: number) => {
           const liveImg = liveImages[index];
           if (liveImg) {
             // 3-1. If the live image is already fully loaded by the browser, use canvas to inline it instantly
@@ -147,7 +186,7 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
       const liveVideos = element.querySelectorAll('video');
       const clonedVideos = clone.querySelectorAll('video');
 
-      clonedVideos.forEach((clonedVideo: any, index: number) => {
+      clonedVideos.forEach((clonedVideo, index: number) => {
         const liveVideo = liveVideos[index];
         if (liveVideo) {
           try {
@@ -184,9 +223,7 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
       }
 
       if (!cachedFontEmbedCSS) {
-        cachedFontEmbedCSS = await getFontEmbedCSS(element, {
-          preferredFontFormat: 'truetype',
-        });
+        cachedFontEmbedCSS = await buildFontEmbedCSS();
       }
 
       // Convert all relative background URLs and local font-face source URLs in same-origin stylesheets
@@ -199,7 +236,7 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
             const rules = Array.from(sheet.cssRules || sheet.rules || []);
             for (const rule of rules) {
               let cssText = rule.cssText;
-              
+
               // Rewrite any url("/...") or url(/...) to url("http://origin/...")
               cssText = cssText.replace(/url\(\s*['"]?\/([^'"\)]+)['"]?\s*\)/g, (match, path) => {
                 if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
@@ -207,10 +244,10 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
                 }
                 return `url("${window.location.origin}/${path}")`;
               });
-              
+
               absoluteStyles += cssText + '\n';
             }
-          } catch (e) {
+          } catch {
             // Ignore security issues on cross-origin stylesheets
           }
         }
@@ -256,24 +293,35 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
       // This is crucial! If we apply left: -9999px directly to the clone element,
       // html-to-image's SVG renderer will draw the clone 9999px off-canvas inside the SVG,
       // resulting in a completely blank/white image output!
-      const wrapper = document.createElement('div');
+      wrapper = document.createElement('div');
       // 복제된 요소가 실제 페이지와 완전히 동일한 부모 스타일 환경(테마, 배경색, 레이아웃 컨텍스트)을 갖도록 클래스들을 부여
       wrapper.className = 'archive-shell theme-mini';
       wrapper.style.position = 'fixed';
       wrapper.style.top = '0';
       wrapper.style.left = '-9999px';
-      wrapper.style.width = `${element.offsetWidth}px`;
+      wrapper.style.width = `${CAPTURE_CSS_WIDTH}px`;
+      wrapper.style.maxWidth = 'none';
       wrapper.style.height = 'auto';
       wrapper.style.overflow = 'hidden';
 
+      const captureFrame = document.createElement('div');
+      captureFrame.style.position = 'relative';
+      captureFrame.style.width = `${CAPTURE_CSS_WIDTH}px`;
+      captureFrame.style.maxWidth = 'none';
+      captureFrame.style.height = 'auto';
+      captureFrame.style.overflow = 'hidden';
+      captureFrame.style.backgroundColor = '#ffffff';
+
       // Ensure the clone itself has normal relative layout inside the wrapper at (0,0)
-      clone.style.width = '100%';
+      clone.style.width = `${CAPTURE_CSS_WIDTH}px`;
+      clone.style.maxWidth = 'none';
       clone.style.height = 'auto';
       clone.style.position = 'relative';
       clone.style.left = '0';
       clone.style.top = '0';
 
-      wrapper.appendChild(clone);
+      captureFrame.appendChild(clone);
+      wrapper.appendChild(captureFrame);
       document.body.appendChild(wrapper);
 
       // 5.5 Wait for all images in the cloned tree to be fully parsed and decoded by the browser.
@@ -281,45 +329,102 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
       // We enforce a strict 500ms maximum timeout using Promise.race to guarantee lightning-fast user experience!
       const clonedImagesList = Array.from(clone.querySelectorAll('img'));
       const decodePromise = Promise.all(
-        clonedImagesList.map((img: any) => {
+        clonedImagesList.map((img) => {
           if (img.src) {
             // img.decode() forces the browser to fully decode and layout the image before resolving
-            return img.decode().catch((err: any) => {
+            return img.decode().catch((err: unknown) => {
               console.warn('Image decode failed or timed out:', err);
             });
           }
           return Promise.resolve();
         })
       );
-      
+
       const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 500));
       await Promise.race([decodePromise, timeoutPromise]);
 
-      // 6. Convert clone (NOT wrapper) to PNG so it is drawn centered on the canvas at (0, 0)
-      const dataUrl = await toPng(clone, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 2, // 2x sharp resolution
-        fontEmbedCSS: cachedFontEmbedCSS,
-      });
+      const captureHeight = Math.ceil(Math.max(
+        clone.scrollHeight,
+        clone.offsetHeight,
+        clone.getBoundingClientRect().height
+      ));
 
-      // Download trigger
-      const link = document.createElement('a');
+      // 6. Convert clone (NOT wrapper) to PNG so it is drawn centered on the canvas at (0, 0)
+      const downloadPng = (dataUrl: string, fileName: string) => {
+        if (!dataUrl.startsWith('data:image/png')) {
+          throw new Error('Capture produced an invalid PNG data URL.');
+        }
+
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+
+      const captureSlice = async (offsetY: number, sliceHeight: number) => {
+        captureFrame.style.height = `${sliceHeight}px`;
+        clone.style.transform = `translateY(-${offsetY}px)`;
+
+        return toPng(captureFrame, {
+          backgroundColor: '#ffffff',
+          width: CAPTURE_CSS_WIDTH,
+          height: sliceHeight,
+          canvasWidth: CAPTURE_CSS_WIDTH,
+          canvasHeight: sliceHeight,
+          pixelRatio: CAPTURE_PIXEL_RATIO,
+          fontEmbedCSS: cachedFontEmbedCSS,
+          skipAutoScale: true,
+          style: {
+            width: `${CAPTURE_CSS_WIDTH}px`,
+            maxWidth: 'none',
+            height: `${sliceHeight}px`,
+          },
+        });
+      };
+
+      const captureValidSlice = async (offsetY: number, requestedHeight: number) => {
+        let sliceHeight = requestedHeight;
+
+        while (sliceHeight >= MIN_CAPTURE_SLICE_HEIGHT) {
+          try {
+            const dataUrl = await captureSlice(offsetY, sliceHeight);
+            if (dataUrl.startsWith('data:image/png')) {
+              return { dataUrl, sliceHeight };
+            }
+          } catch (error) {
+            console.warn('Capture slice was too tall, retrying smaller:', error);
+          }
+
+          sliceHeight = Math.floor(sliceHeight / 2);
+        }
+
+        const dataUrl = await captureSlice(offsetY, sliceHeight);
+        return { dataUrl, sliceHeight };
+      };
+
       const safeTitle = title.replace(/[\s/\\:*?"<>|]/g, '_');
-      link.href = dataUrl;
-      link.download = `${safeTitle}_아카이브_${postId}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (error: any) {
+      let partIndex = 0;
+      let offsetY = 0;
+      const estimatedParts = Math.ceil(captureHeight / MAX_CAPTURE_SLICE_HEIGHT);
+
+      while (offsetY < captureHeight) {
+        const requestedHeight = Math.min(MAX_CAPTURE_SLICE_HEIGHT, captureHeight - offsetY);
+        const { dataUrl, sliceHeight } = await captureValidSlice(offsetY, requestedHeight);
+        const partSuffix = estimatedParts > 1 ? `_part${String(partIndex + 1).padStart(2, '0')}` : '';
+
+        downloadPng(dataUrl, `${safeTitle}_아카이브_${postId}${partSuffix}.png`);
+        offsetY += sliceHeight;
+        partIndex += 1;
+      }
+    } catch (error: unknown) {
       console.error('Capture error:', error);
       alert('캡처 중 오류가 발생했습니다. 개발자 도구(F12) 콘솔을 확인해 주세요.');
     } finally {
       // 7. Cleanup wrapper from document
-      if (clone && clone.parentNode) {
-        const parent = clone.parentNode;
-        if (parent && parent.parentNode) {
-          parent.parentNode.removeChild(parent);
-        }
+      if (wrapper?.parentNode) {
+        wrapper.parentNode.removeChild(wrapper);
       }
       setIsCapturing(false);
     }
