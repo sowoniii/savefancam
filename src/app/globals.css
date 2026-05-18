@@ -1,0 +1,421 @@
+/* Tailwind Preflight(CSS reset)를 제외하고 theme 변수와 utilities만 로드.
+   DC Inside의 reset.css가 기준이 되어야 요소 정렬이 공식 사이트와 일치함. */
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/utilities" layer(utilities);
+
+/* Apple SD Gothic Neo - 로컬 폰트 (Windows/Android 등 비-Apple 기기용) */
+@font-face {
+  font-family: "Apple SD Gothic Neo";
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+  src: url("/AppleSDGothicNeoR.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Apple SD Gothic Neo";
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+  src: url("/AppleSDGothicNeoM.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Apple SD Gothic Neo";
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+  src: url("/AppleSDGothicNeoB.ttf") format("truetype");
+}
+
+@theme {
+  --color-dc-blue: #3b4890;
+  --color-dc-gray-bg: #f2f2f2;
+  --color-dc-border: #e5e5e5;
+  --color-dc-text: #333333;
+  --color-dc-light-text: #999999;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", helvetica, sans-serif;
+}
+
+body {
+  background-color: var(--color-dc-gray-bg);
+  color: var(--color-dc-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Keep imported DC styles on the same app font without changing their layout rules. */
+* {
+  font-family: var(--font-sans) !important;
+}
+
+.archive-body {
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  background-color: var(--color-dc-gray-bg);
+}
+
+.archive-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 480px;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-color: #ffffff;
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
+
+.archive-capture-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 2px;
+  background-color: #f0f0f0;
+  color: #333333;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 28px;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.archive-capture-button:disabled {
+  cursor: default;
+}
+
+.archive-search-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2e2e2;
+  background-color: #f9f9f9;
+  color: #666666;
+  font-size: 12px;
+}
+
+.archive-search-reset {
+  color: #dc2b2b;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.archive-empty-list {
+  padding: 50px 0;
+  color: #999999;
+  font-size: 14px;
+  text-align: center;
+}
+
+.archive-paging-disabled {
+  cursor: default;
+}
+
+.archive-bottom-search {
+  display: flex;
+  margin-top: 15px;
+  padding: 10px 12px;
+  border-top: 1px solid #e2e2e2;
+  border-bottom: 1px solid #e2e2e2;
+  background-color: #fafafa;
+}
+
+.archive-bottom-search-form {
+  display: flex;
+  width: 100%;
+  gap: 6px;
+}
+
+.archive-bottom-search-select {
+  padding: 6px;
+  border: 1px solid #cccccc;
+  border-radius: 3px;
+  background-color: #ffffff;
+  font-size: 12px;
+  outline: 0;
+}
+
+.archive-bottom-search-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #cccccc;
+  border-radius: 3px;
+  font-size: 12px;
+  outline: 0;
+}
+
+.archive-bottom-search-button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 3px;
+  background-color: #2b3467;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.archive-request-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding-bottom: 64px;
+  background-color: var(--color-dc-gray-bg);
+}
+
+.archive-request-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: #2b3467;
+  color: #ffffff;
+}
+
+.archive-request-back {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.archive-request-back-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.archive-request-back-label {
+  font-size: 17px;
+  font-weight: bold;
+}
+
+.archive-request-panel {
+  padding: 20px 16px;
+  border-bottom: 1px solid #e2e2e2;
+  background-color: #ffffff;
+}
+
+.archive-request-title {
+  display: flex;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-left: 8px;
+  border-left: 3px solid #2b3467;
+  color: #333333;
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.archive-request-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.archive-request-input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #cccccc;
+  border-radius: 3px;
+  background-color: #fafafa;
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.05);
+  color: #333333;
+  font-size: 13px;
+  box-sizing: border-box;
+  outline: 0;
+}
+
+.archive-request-error {
+  padding: 10px 12px;
+  border: 1px solid #ffa3a3;
+  border-radius: 3px;
+  background-color: #fff1f1;
+  color: #d32f2f;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.archive-request-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  gap: 6px;
+  padding: 12px;
+  border: 0;
+  border-radius: 3px;
+  background-color: #2b3467;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.archive-request-submit:disabled {
+  background-color: #a2a8cc;
+  cursor: default;
+}
+
+.archive-request-guide-wrap {
+  margin-top: 12px;
+  padding: 0 16px;
+}
+
+.archive-request-guide {
+  padding: 14px 16px;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  background-color: #f8f9fa;
+}
+
+.archive-request-guide-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  color: #495057;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.archive-request-guide-list {
+  padding-left: 16px;
+  color: #6c757d;
+  font-size: 11px;
+  line-height: 1.6;
+  list-style-type: disc;
+}
+
+.archive-request-guide-list li + li {
+  margin-top: 4px;
+}
+
+/* Scrollbar styling for desktop users viewing the mobile layout */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 4px;
+}
+
+.sp-mweb {
+  margin-left: 5px;
+  margin-top: 2px;
+  background-position: 0 -39px;
+  width: 11px;
+  height: 15px;
+  vertical-align: top;
+  font-size: 0;
+  line-height: 0;
+}
+
+.sp-app {
+  margin-left: 2px !important;
+  margin-top: 2px !important;
+}
+
+/* Post detail compatibility overrides.
+   These replace the former inline <style> block and stay scoped to the captured post area. */
+#post_content_wrapper .ginfo-area .nick {
+  padding-right: 4px;
+}
+
+#post_content_wrapper .og-wrap {
+  display: flex !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+#post_content_wrapper .og-wrap .og-thum {
+  flex-shrink: 0 !important;
+}
+
+#post_content_wrapper .og-wrap .og-txtin {
+  flex-grow: 1 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+#post_content_wrapper .og-wrap .og-title,
+#post_content_wrapper .og-wrap .og-txt,
+#post_content_wrapper .og-wrap .og-url {
+  display: block !important;
+  width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+#post_content_wrapper.gall-thum-btm,
+#post_content_wrapper .gall-thum-btm,
+#post_content_wrapper .gall-thum-btm-inner,
+#post_content_wrapper .thum-txt,
+#post_content_wrapper .thum-txtin {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#post_content_wrapper .thum-txtin iframe {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+#post_content_wrapper .thum-txtin a,
+#post_content_wrapper .comment-lnk {
+  color: #3b4890 !important;
+  font-weight: 500 !important;
+  text-decoration: underline !important;
+}
+
+#post_content_wrapper .thum-txtin a:hover,
+#post_content_wrapper .comment-lnk:hover {
+  color: #293266 !important;
+  text-decoration: underline !important;
+}
+
+#post_content_wrapper .thum-txtin .dc_series a,
+#post_content_wrapper .thum-txtin [class*="series"] a,
+#post_content_wrapper .thum-txtin .dc_series a:hover,
+#post_content_wrapper .thum-txtin [class*="series"] a:hover {
+  color: inherit !important;
+  font-weight: normal !important;
+  text-decoration: none !important;
+}
+
+#post_content_wrapper .thum-txtin a.og-wrap,
+#post_content_wrapper .thum-txtin .og-wrap,
+#post_content_wrapper .thum-txtin .og-wrap a,
+#post_content_wrapper .thum-txtin [class*="og-"] a,
+#post_content_wrapper .thum-txtin .og-url,
+#post_content_wrapper .thum-txtin .og-tit,
+#post_content_wrapper .thum-txtin .og-title,
+#post_content_wrapper .thum-txtin .og-tit a,
+#post_content_wrapper .thum-txtin .og-title a,
+#post_content_wrapper .thum-txtin a.og-wrap:hover,
+#post_content_wrapper .thum-txtin .og-wrap a:hover,
+#post_content_wrapper .thum-txtin [class*="og-"] a:hover,
+#post_content_wrapper .thum-txtin .og-tit:hover,
+#post_content_wrapper .thum-txtin .og-title:hover,
+#post_content_wrapper .thum-txtin .og-url:hover {
+  color: #333 !important;
+  font-weight: normal !important;
+  text-decoration: none !important;
+}

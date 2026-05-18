@@ -1,0 +1,219 @@
+@charset "UTF-8";
+
+.talkbody{height:100%; min-height:100%; overflow:hidden !important; touch-action:none}
+
+.talkbody, .talkbody th, .talkbody td, .talkbody input, .talkbody select, .talkbody textarea, .talkbody button{font-family:'Helvetica Neue',AppleSDGothicNeo-Regular,'맑은 고딕','Malgun Gothic','나눔고딕', NanumGothic,'돋움', Dotum, sans-serif;letter-spacing:-0.05em}
+button:focus{outline:none }
+.talk_layer .wrap{position:relative;min-width:320px;height:100%;min-height:100%;background:#b2c7da;box-sizing:border-box;padding:50px 0 0px}
+.headbox,.talk_ft{position:fixed;min-width:320px;width:100%;box-sizing:border-box;z-index:10} /*200915 .talk_ft 추가*/
+.talkbody .flexbox{display:-ms-flexbox;display:flex}
+.talkbody .cbox{-ms-flex:1;flex:1}
+.int{width:100%;box-sizing:border-box;padding:0 9px;border:none}
+.talkbody .blind{position:sticky;;line-height:0;font-size:0;color:transparent}
+.sp_talk{background:url(https://m.dcinside.com/images/talk/sp_talk.png) no-repeat;background-size:125px 62.5px}/*201013 캔버스관련 이슈(외부경로 이미지 불러올수없음)로 이미지경로 로컬로 변경*/
+.talk_layer{position:fixed;top:0;left:0;display:block;min-height:100%1;width:100%!important;height:100%!important;box-sizing: border-box;background-color:#b2c7da;-webkit-overflow-scrolling: touch;z-index: 20000}
+
+
+.checkedbox{position:relative;display:inline-block;;font-size:0}
+.checkedbox .inrdo,.checkedbox .inrdo::before{position:absolute;left:0;top:1px}
+.checkedbox .inrdo::before, checkedbox .inrdo:checked + lable::after, .checkedbox .inrdo:checked,.checkedbox .inrdo:checked + label::before,.checkedbox .inrdo:checked + label::after{display:inline-block; ;position:absolute;content:'';border-radius:50%}
+.checkedbox.yellow .inrdo:checked + label::before,.checkedbox.yellow .inrdo:checked + label::after{display:inline-block; ;position:absolute;content:'';border-radius:50%}
+.checkedbox.yellow .inrdo::before{width:15px;height:15px;border:2px #dadada solid;}
+.checkedbox.yellow .inrdo:checked::before{border:2px #ffeb34 solid}
+.checkedbox.yellow label{margin-left:26px;font-size:14px}
+.checkedbox.yellow .inrdo{display:inline-block;height:19px;width:19px}
+.checkedbox.yellow .inrdo:checked + label::after{left:5.5px;top:15.5px;content:'';width:8px;height:8px;border:0;background-color:#ffeb34}
+/*파란색 라디오(작음)*/
+.checkedbox.sblue .inrdo::before{width:14px;height:14px;border:2px #dadada solid}
+.checkedbox.sblue .inrdo:checked::before{border:2px #3b4890 solid}
+.checkedbox.sblue label{margin-left:25px;font-size:14px}
+.checkedbox.sblue .inrdo{display:inline-block;height:19px;width:9px}
+.checkedbox.sblue .inrdo:checked + label::after{left:4px;top:6px;content:'';width:10px;height:10px;border:0;background-color:#3b4890}
+
+.checkedbox{position:relative;display:inline-block;;font-size:0}
+.checkedbox .inrdo,.checkedbox .inrdo::before{position:absolute;left:0;top:1px}
+.checkedbox .inrdo::before, checkedbox .inrdo:checked + lable::after, .checkedbox .inrdo:checked,.checkedbox .inrdo:checked + label::before,.checkedbox .inrdo:checked + label::after{display:inline-block; ;position:absolute;content:'';border-radius:50%}
+.checkedbox.yellow .inrdo::before{width:15px;height:15px;border:2px #dadada solid;}
+.checkedbox.yellow .inrdo:checked::before{border:2px #ffeb34 solid}
+.checkedbox.yellow label{margin-left:26px;font-size:14px}
+.checkedbox .inrdo{display:inline-block;height:19px;width:19px}
+.checkedbox.yellow .inrdo:checked + label::after{left:5.5px;top:15.5px;content:'';width:8px;height:8px;border:0;background-color:#ffeb34}
+
+.talkbody input::-webkit-input-placeholder{color:#ccc}
+.talkbody input:-moz-placeholder{color:#ccc}
+.talkbody input::-moz-placeholder {color:#ccc}
+.talkbody input:-ms-input-placeholder{color:#ccc}
+.talkbody textarea::-webkit-input-placeholder{color:#ccc}
+.talkbody textarea:-moz-placeholder{color:#ccc}
+.talkbody textarea::-moz-placeholder {color:#ccc}
+.talkbody textarea:-ms-input-placeholder{color:#ccc}
+
+/*폰트색*/
+.color222{color:#222}
+.colora5a5a5{color:#a5a5a5}
+
+/*버튼 공통*/
+.talkbody .btn_round{border-radius:40px}
+.talkbody .linegray{border:1px #e5e5e5 solid}
+.talkbody .btn_blue{padding:0 32px;height:41px;background:#3b4890;color:#fff;font-size:16px;font-weight:bold}
+
+
+.wrap.preview{padding-bottom:50px}
+.preview .search{background:none;font-size:15px;color:#222}
+.preview .search .txt{display:inline-block;;padding-top:0px}
+
+/**************상단*****************/
+.talkbody .headbox{top:0;background:#fff;padding:0 11px;font-size:0}
+.talkbody .headbox .head{position:relative;height:50px;align-items:center}
+.talkbody .headbox .head .cbox{margin-left:17px}
+.talkbody .headbox .tit{font-size:18px}
+.talkbody .headbox .btn_round{width:65px;height:27px;font-size:13px;font-weight:bold;margin-left:8px}
+.talkbody .headbox .btn_round:first-child{margin-left:0}
+.talkbody .headbox .btn_talksave{display:inline-block;width:16px;height:20px;margin-right:9.5px;background:url(/dc/m/img/talk/icon_save.png)no-repeat top center;background-size:16px 20px; }
+.talkbody .search{height:47px;padding:0px 11px;background:#9aadbc;align-items:center}
+.talkbody .searchbox {width:100%;;margin:0 11px 0 13px}
+.talkbody .searchbox input{border:none;height:36px;font-size:15px;color:#222}
+.talkbody .searchbox input:focus{outline:none}
+.talkbody .search .btnbox{margin-top:-2px}
+.talkbody .btn_close{width:17px;height:17px;background-position:-21px 0px}
+.talkbody .btn_back{display:block;width:21px;height:19px;background-position:0 0;line-height:0;font-size:0;color:transparent;font-size:0}
+.talkbody .btn_back img{width:21px;height:19px}
+.talkbody .btn_sch{display:block; width:20px;height:18px;background-position:-69px 0;background-size:125px 62.5px;font-size:0}
+.talkbody .btn_sch img{width:20px;height:18px}
+.talkbody .btn_more{display:block;width:19px;height:16px;background-position:-50px 0;margin-left:17px;font-size:0}
+.talkbody .btn_more img{width:19px;height:16px}
+
+
+/*********본문**************/
+.talk_container{height:100%}
+.talk_container .scrollbox{position:relative;overflow-y:auto;box-sizing:border-box;padding:1px 11px 10px;background:#b2c7da}/*1111*/
+
+/***이용 안내 가이드****/
+.talk_guide{position:absolute;;left:0;bottom:0;width:100%;box-sizing:border-box;padding:0 11px 27px}
+.talk_guide .guidetxt{text-align:center}
+.talk_guide .guidetxt .inner{color:#75818d}
+.talk_guide .guide_ex{border:1px #d9e3ed solid;padding:0px 0 14px;margin-top:12px}
+.talk_guide .guide_ex .tit{height:28px;line-height:28px;padding:0 12px;background:#d9e3ed;color:#75818d;font-size:16px}
+.talk_guide .guide_ex .roominfo{margin:11px 0 17px}
+.talk_guide .guide_ex .talk_wrap{padding:0 11px}
+.talk_wrap .position{position:absolute;;font-size:16px;color:#444}
+.talk_wrap .position{margin-top:-27px}
+
+/*대화 말풍선*/
+.talk_wrap{position:relative;display:-ms-flexbox;display:flex;margin-top:11px;color:#222}
+.talk_wrap button{display:block}
+.talk_wrap:first-child, .roominfo + .talk_wrap{margin-top:16px}
+.talk_box{position:relative;max-width:62.5%;margin-left:41px}
+.thumb + .talk_box{margin-left:6px}
+.talk_wrap.me .talk_box{margin-left:0}
+
+.talk_wrap .thumb{position:relative;overflow:hidden;width:36px;height:36px;background:#76b5bf;border-radius:10px}
+.talk_wrap .thumb .thumb_img{display:block;width:36px;height:36px;position:relative;;border-radius:0}
+.talk_wrap .thumb .thumb_img img{display:inline-block;width:18px;height:18px;transform:translate(50%, 50%);position:relative;}
+
+.talk_wrap .name{font-size:13px;color:#222;line-height:15px}
+
+.talk_wrap .txt{position:relative;background:#fff;border-radius:19px;padding:10px;margin:0px 53px 0 0;box-sizing:border-box;font-size:15px;text-align:left;word-break:break-all;white-space:pre-wrap}
+.talk_wrap .name + button .txt, .talk_wrap .name + .txt{margin:6px 53px 0 0}
+.talk_wrap.me{justify-content:flex-end}
+.tailimg{position:absolute;top:0;left:0;width:8px;height:10px;}
+.me .txt .tailimg{left:inherit;right:0}
+
+
+.talk_wrap .txt:before{display:block;left:-0;background-position:1px 1px}
+.talk_wrap .txt:after{display:none}
+.talk_wrap.me .txt:before{display:none}
+.talk_wrap.me .txt:after{display:block;right:0px;background-position:-17px 1px}
+.talk_wrap.me .txt{background:#faed31;margin:0 0 0 53px;margin-right:0}
+
+.talk_wrap .talk_box .lbox{position:absolute;right:-5px;bottom:0;color:#59636c;font-size:11px}
+/*.talk_wrap.other .talk_box button + .lbox{right:-14px}*/
+
+.talk_wrap.me .talk_box .lbox{left:0;width:53px;overflow:hidden}
+.talk_wrap .talk_box .lbox .inr{width:53px}
+.talk_box .lbox .inr .num, .talk_box .lbox .inr .time{display:block}
+.talk_wrap.me  .talk_box .lbox .inr .time{text-align:right;padding-right:5px}
+.talk_box .lbox .inr .num{position:relative;top:4px;left:0;color:#ffeb34;font-weight:bold}
+.talk_wrap.me .talk_box .lbox .inr .num{margin-right:6px;text-align:right}
+
+/*수정박스, 첨부기능*/
+.modifybox,.attachbox{position:absolute;font-size:0;margin-top:5px;line-height:1.5;z-index:20003}
+.modifybox .inr, .attachbox .inr{display:inline-block;width:171px;background:#fff;border-radius:10px;box-shadow:0px 1px 4px #808080;padding:13px 18px 23px;box-sizing:border-box;
+font-size:16px;
+}
+.talk_wrap.me .modifybox{right:0;margin-left:26px}
+.talk_wrap.me.other .modifybox{margin-left:24px}
+.modifylist li, .attachmenu li{padding-top:15px}
+.modifylist li:first-child, .attachmenu li:first-child{padding-top:0}
+
+/*첨부기능*/
+.attachbox{bottom:0;left:11px;text-align:left;margin-bottom:44px}
+.attachmenu + .attachmenu{border-top:1px #f2f2f2 solid;padding-top:14px;margin-top:13px}
+/*****방 정보, 방 정보 수정******/
+.roominfo{position:relative;text-align:center;margin-top:17px}
+.roominfo >  button{display:block;margin:0 auto}
+.roominfo .inner{display:inline-block;padding:8px 10px;margin:0px auto 0;color:#fff;font-size:12px;text-align:center;border-radius:19px;background:rgba(156,175,190,1)}
+.roominfo .modifybox{width:100%;margin-top:5px}
+.roominfo .modifybox .inr{width:auto;height:53px;padding:0}
+.roominfo .modifybox button{position:relative;width:58px;height:100%;color:#222;font-size:14px}
+.roominfo .btn_del::before{content:"|";position:absolute;left:-1px;top:16px;;display:inline-block;color:#f2f2f2;font-size:14px}
+
+	/****보이스톡 페이스톡 외 기타톡****/
+.talk_wrap.me.other .txt{background:#fff}
+.talk_wrap.other .txt:before{display:none}
+.talk_wrap.other .txt{width:142px;padding:11px 10px;text-align:right;font-size:13px;border-radius:14px}
+.iconbox .icon{position:absolute;left:10px;top:13px}
+.talk_wrap.other .voice .icon{width:18px;height:19px}/*보이스톡 그룹콜 해요*/
+.talk_wrap.other .novoice .icon{width:21px;height:19px}/*보이스톡 부재중*/
+.talk_wrap.other .face .icon{width:21px;height:14px;top:14px}/*페이스톡*/
+.talk_wrap.other .noface .icon{width:21px;height:14px;top:14px}/*페이스톡 부재중*/
+.talk_wrap.other .voicem .icon{width:14px;height:18px}/*음성 메시지*/
+
+/*전송 실패*/
+.talk_wrap.me.fail .txt{margin-left:45px}
+.failbox{display:inline-block;background-color:#fe624b;height:21px;border-radius:3px}
+.failbox button{position:relative;display:inline-block;width:20px;height:21px;color:transparent;font-size:0;line-height:0}
+.failbox button .re{width:11px;height:10px}
+.failbox button .del{width:9px;height:9px}
+
+/************하단****************/
+.talk_ft{bottom:0;width:100%;background:#fff;align-items:center;color:#222;font-size:0;background:#b2c7da} /*200915 .talk_ft 추가*/
+.targetbox{overflow:hidden;min-height:41px;padding:0 11px;background:#9aadbc;box-sizing:border-box}
+
+.targetbox .cbox{margin:0 17px 0 11px;line-height:41px}
+.targetbox .cbox .int{height:27px;color:#222;font-size:16px}
+.targetbox .choegeun{display:inline-block ;vertical-align:top;line-height:41px;margin-left:6px}
+.targetbox .inrdo, .targetbox .yellow .inrdo::before{top:6px}/*200921*/
+.targetbox .checkedbox.yellow .inrdo:checked + label::after{left:5.5px;top:17.5px}
+.targetbox .checkedbox label{line-height: 41px}
+.targetbox .btn_round{width:40px;height:19px;border:1px #e4e4e5 solid;background:#fff;font-weight:bold;font-size:11px;line-height:13px}
+.targetbox .rbox{margin-right:16px}
+
+.intxtbox{display:table;table-layout:fixed;width:100%;background:#fff}
+.recent_list{padding-bottom:11px}
+.recent_empty{position:relative;font-size:13px;color:#ccc;padding-bottom:11px;z-index:0}
+.recent_list li{width:auto;margin-left:23px}
+.recent_list li:first-child{margin-left:0}
+.recent_list li button{color:#444;font-size:13px}
+.recent.empty{font-size:13px;color:#ccc}
+
+.recent_list{overflow-x:auto;white-space:nowrap}/*2011119 작업자 요청으로 스크롤 처리*/
+.recent_list li{display:inline-block}/*2011119*/
+
+.intxtbox .txtbox{display:inline-block;width:100%;color:#222;min-height:27px;height:100%;;max-height:108px}
+.more_menu{position:relative;width:43px;display:table-cell;line-height:45px;vertical-align:top;text-align:center}
+.btn_more_menu {width:43px;height:43px}
+.btn_more_menu span{display:block;margin:0 auto;width:22px;height:22px;
+background:url(/dc/m/img/talk/icon_add.png?2) no-repeat 0 0;background-size:22px 22px
+}
+.talkup{display:table-cell;width:43px;background:#ffeb34;vertical-align:middle}
+.btn_talkup{width:43px;height:43px;background:#ffeb34;font-weight:bold}
+.talkbody textarea.intxt{width:100%;min-height:42px;height:100%;;max-height:108px;padding:8px;box-sizing:border-box;border:none;resize:none}
+.talkbody textarea.intxt:focus{outline:none}
+
+/*달력*/
+.talkbody .tb-calendar tbody tr td.pick2 .dayin::before, .talkbody .tb-calendar tbody tr td.pick1 .dayin::before{background-color:transparent!important}
+
+@media only screen and (max-width:320px){
+.talk_wrap.other .txt{width:133px}
+}

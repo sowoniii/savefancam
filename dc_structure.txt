@@ -1,0 +1,102 @@
+<section class="grid">
+  <div class="gallview-tit-box
+			
+			">
+    <span class="tit">
+      <span class="sp-icon sp-mweb">
+    <div class="btm">
+      <ul class="ginfo2">
+        <li>
+          <div class="ginfo-area">
+            <button class="nick">
+        <li>
+      <div class="rt">
+        <button class="btn-scrap">
+          <em class="blind">
+  <div class="gall-thum-btm ">
+    <div class="gall-thum-btm-inner">
+      <ul class="ginfo2">
+        <li>
+        <li>
+          <span>
+        <li>
+          <a class="btn-commentgo">
+            <span class="point-red">
+      <div class="thum-txt">
+        <div class="thum-txtin">
+          <p>
+            <br>
+          <div class="block">
+            <img class=" lazy">
+          <p>
+            <br>
+      <div class="reco-search">
+        <a class="daum-reco-search">
+          <span class="txt1">
+        <ul class="reco-lst">
+      <div class="reco-area four">
+        <div class="reco-circle one-reco">
+          <ul class="reco-cicle-lst">
+            <li class="reco-up">
+              <button id="recommend_join" class="sp-icon sp-rega ">
+              <div class="ct-box">
+                <span id="recomm_btn" class="ct">
+                <span class="go-ct">
+                  <span class="sp-nick gonick">
+                  <span id="recomm_btn_member" class="num">
+        <div class="reco-icon-box">
+          <ul class="reco-icon-lst">
+            <li>
+              <a class="sp-scrap">
+            <li>
+              <a class="sp-share">
+            <li>
+              <a class="sp-report">
+      <div class="adv-groupin">
+        <script>
+      <div id="view_btn_area" class="btn-justify-area rtfix">
+        <button class="btn-jusline-gray">
+        <button class="btn-jusline-inblue write">
+        <button class="btn-jusline-gray">
+        <button class="btn-jusline-gray">
+      <div id="comment_box" class="all-comment">
+        <div class="all-comment-tit flex">
+          <div class="tit-box">
+            <a class="tit">
+              <span class="ct">
+              <span class="sp-reload">
+          <div class="rt">
+            <div class="box">
+              <a class="veiw-top">
+            <div class="sel-box">
+              <label>
+              <select class="sel">
+                <option>
+                <option>
+                <option>
+      <div class="comment-write-btm">
+        <div id="nick_tipbox" class="tip_box_inbtn">
+          <div class="inner">
+            <span class="txt">
+              <br>
+            <button class="btn-del">
+              <em class="blind">
+        <div class="comment-write">
+          <form id="comment_write">
+            <input>
+            <div class="who anonymity_in">
+              <ul class="who-lst">
+                <li>
+                  <input id="comment_nick" class="ipt">
+                  <span class="anonymity">
+                <li>
+                  <input id="comment_pw" class="ipt">
+            <textarea id="comment_memo" class="comment-caption">
+            <input class="hide-robot">
+            <div class="btm-wrt-btns">
+              <div class="lt">
+                <button id="commentWrite" class="sp-write-form-icon add-dccon">
+                <button id="submit_voice" class="sp-write-form-icon add-voice">
+              <div class="rt">
+                <button class="btn-comment-write">
+          <div id="dcconBoxComment" class="dcconBox">
