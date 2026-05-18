@@ -348,6 +348,7 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
         clone.offsetHeight,
         clone.getBoundingClientRect().height
       ));
+      const captureTarget = clone;
 
       // 6. Convert clone (NOT wrapper) to PNG so it is drawn centered on the canvas at (0, 0)
       const downloadPng = (dataUrl: string, fileName: string) => {
@@ -365,7 +366,7 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
 
       const captureSlice = async (offsetY: number, sliceHeight: number) => {
         captureFrame.style.height = `${sliceHeight}px`;
-        clone.style.transform = `translateY(-${offsetY}px)`;
+        captureTarget.style.transform = `translateY(-${offsetY}px)`;
 
         return toPng(captureFrame, {
           backgroundColor: '#ffffff',
