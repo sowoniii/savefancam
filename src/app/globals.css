@@ -419,3 +419,38 @@ body {
   font-weight: normal !important;
   text-decoration: none !important;
 }
+
+/* 📱 Native Mobile App-Like Animation & Touch Enhancements */
+#post_content_wrapper img,
+#post_content_wrapper iframe {
+  opacity: 0;
+  animation: nativeFadeIn 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  max-width: 100% !important;
+  height: auto !important;
+  border-radius: 4px;
+}
+
+@keyframes nativeFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Smooth Tap Active Highlight for mobile list items */
+.gall-detail-lst li:active,
+.gall-array-tab a:active,
+.archive-capture-button:active {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  transition: background-color 0.05s ease;
+}
+
+/* Mobile Web App Layout Smooth Scrolling */
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}

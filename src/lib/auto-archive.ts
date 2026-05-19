@@ -3,12 +3,46 @@ import { dbApi, libsqlClient } from "./db";
 
 let isGeneralScanning = false;
 let isLiteratureScanning = false;
+let generalCycleCount = 0;
+
+type GalleryListPost = {
+  url: string;
+  dc_id: string;
+  category: string;
+  likes: number;
+  comment_count: number;
+};
+
+const POST_PROCESS_CONCURRENCY = Math.max(1, Number(process.env.AUTO_ARCHIVE_POST_CONCURRENCY || 2));
+const POST_SCRAPE_DELAY_MIN_MS = Number(process.env.AUTO_ARCHIVE_POST_DELAY_MIN_MS || 250);
+const POST_SCRAPE_DELAY_MAX_MS = Number(process.env.AUTO_ARCHIVE_POST_DELAY_MAX_MS || 800);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const randomDelay = (minMs: number, maxMs: number) => {
+  if (maxMs <= minMs) return minMs;
+  return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+};
+
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+
+async function runWithConcurrency<T>(items: T[], concurrency: number, worker: (item: T) => Promise<void>) {
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor++];
+      await worker(item);
+    }
+  });
+
+  await Promise.all(workers);
+}
 
 /**
  * Common processing engine for both queues.
  * Performs batch DB queries, detects new posts, matches comment count changes, and triggers updates.
  */
-async function processPostsList(posts: any[], queueName: string) {
+async function processPostsList(posts: GalleryListPost[], queueName: string) {
   if (posts.length === 0) return;
 
   const dcIds = posts.map(p => p.dc_id);
@@ -27,8 +61,8 @@ async function processPostsList(posts: any[], queueName: string) {
         });
       }
     }
-  } catch (err: any) {
-    console.error(`[${queueName}] DB batch check error:`, err.message);
+  } catch (err: unknown) {
+    console.error(`[${queueName}] DB batch check error:`, errorMessage(err));
     return;
   }
 
@@ -51,7 +85,7 @@ async function processPostsList(posts: any[], queueName: string) {
     console.log(`[${queueName}] Processing ${postsToProcess.length} posts...`);
     // Process oldest posts first (ordered chronologically)
     postsToProcess.reverse();
-    for (const post of postsToProcess) {
+    await runWithConcurrency(postsToProcess, POST_PROCESS_CONCURRENCY, async (post) => {
       const isUpdate = dbPostsMap.has(post.dc_id);
       console.log(`[${queueName}] ${isUpdate ? "Updating" : "Archiving"}: ID ${post.dc_id} - ${post.url}`);
       try {
@@ -62,26 +96,25 @@ async function processPostsList(posts: any[], queueName: string) {
         // Trigger On-Demand ISR Cache Revalidation (guarantees 0ms page loads with 100% fresh data in production)
         if (process.env.NODE_ENV === "production") {
           try {
-            const { revalidatePath } = require("next/cache");
+            const { revalidatePath } = await import("next/cache");
             revalidatePath("/");
             revalidatePath(`/post/${post.dc_id}`);
             console.log(`♻️ [${queueName}] On-Demand ISR Revalidation triggered for / and /post/${post.dc_id}`);
-          } catch (isrErr) {
+          } catch {
             // Robust silent catch when run from standalone console scripts outside Next.js process context
           }
         }
 
-        // Small delay to prevent rate limits
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      } catch (e: any) {
-        console.error(`[${queueName}] Failed to process post ${post.url}:`, e.message);
+        await sleep(randomDelay(POST_SCRAPE_DELAY_MIN_MS, POST_SCRAPE_DELAY_MAX_MS));
+      } catch (e: unknown) {
+        console.error(`[${queueName}] Failed to process post ${post.url}:`, errorMessage(e));
       }
-    }
+    });
   }
 }
 
 // 1. ⚡ Queue 1: General Tab Queue (전체 탭 추적 큐)
-// Tracks Page 1 of the main list. Updates on new posts or comment count changes.
+// Tracks Page 1-3 of the main list on a smart cycle (Page 1 every 3s, Page 2 every 10 cycles, Page 3 every 20 cycles).
 async function scanGeneralTab() {
   if (isGeneralScanning) return;
   isGeneralScanning = true;
@@ -95,10 +128,22 @@ async function scanGeneralTab() {
   }
 
   try {
-    const posts = await scrapeDcGalleryList(galleryId, isMini, undefined, 1);
-    await processPostsList(posts, "General Queue");
-  } catch (error: any) {
-    console.error("[General Queue] Error in polling loop:", error.message);
+    generalCycleCount++;
+    let pageToScrape = 1;
+
+    // Smart cycle allocation: Page 3 every 20 cycles (~60s), Page 2 every 10 cycles (~30s), Page 1 on all other cycles
+    if (generalCycleCount % 20 === 0) {
+      pageToScrape = 3;
+      console.log(`[General Queue] 🔍 Slow-sweep Page 3 triggered to catch older posts...`);
+    } else if (generalCycleCount % 10 === 0) {
+      pageToScrape = 2;
+      console.log(`[General Queue] 🔍 Slow-sweep Page 2 triggered to catch older posts...`);
+    }
+
+    const posts = await scrapeDcGalleryList(galleryId, isMini, undefined, pageToScrape);
+    await processPostsList(posts, `General Queue (P${pageToScrape})`);
+  } catch (error: unknown) {
+    console.error("[General Queue] Error in polling loop:", errorMessage(error));
   } finally {
     isGeneralScanning = false;
   }
@@ -122,8 +167,8 @@ async function scanLiteratureTab() {
   try {
     const posts = await scrapeDcGalleryList(galleryId, isMini, litHead, 1);
     await processPostsList(posts, "Literature Queue");
-  } catch (error: any) {
-    console.error("[Literature Queue] Error in polling loop:", error.message);
+  } catch (error: unknown) {
+    console.error("[Literature Queue] Error in polling loop:", errorMessage(error));
   } finally {
     isLiteratureScanning = false;
   }
@@ -154,6 +199,13 @@ function scheduleNextLiteratureScan() {
 
 // 4. Bootstrapper
 export function startAutoArchive() {
+  // In local development mode, disable the automatic background crawler by default
+  // to prevent dev-server compile-loops and Tokyo DB connection congestion.
+  if (process.env.NODE_ENV !== 'production' && process.env.ENABLE_LOCAL_CRAWLER !== 'true') {
+    console.log("ℹ️ [Auto Archive] Background crawler disabled in local development to keep responses snappy (ENABLE_LOCAL_CRAWLER !== true).");
+    return;
+  }
+
   // Block starting during production build or within static generation workers
   if (
     process.env.NEXT_PHASE === 'phase-production-build' ||
@@ -183,9 +235,10 @@ export function startAutoArchive() {
 }
 
 // Next.js hot reloading checker
+const autoArchiveGlobal = globalThis as typeof globalThis & { __autoArchiveStarted?: boolean };
 if (typeof global !== 'undefined') {
-  if (!(global as any).__autoArchiveStarted) {
-    (global as any).__autoArchiveStarted = true;
+  if (!autoArchiveGlobal.__autoArchiveStarted) {
+    autoArchiveGlobal.__autoArchiveStarted = true;
     startAutoArchive();
   }
 }

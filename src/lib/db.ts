@@ -2,6 +2,53 @@ import { createClient } from "@libsql/client";
 import "./auto-archive";
 import { uploadPostImagesToImgBB } from "./imgbb";
 
+// Global cache for categories list to avoid redundant database calls and connection timeouts
+let cachedCategories: string[] | null = null;
+let categoriesCacheTime = 0;
+
+const LIST_CACHE_TTL_MS = Number(process.env.DB_LIST_CACHE_TTL_MS || 3000);
+const POST_CACHE_TTL_MS = Number(process.env.DB_POST_CACHE_TTL_MS || 15000);
+
+type CacheEntry<T> = {
+  value: T;
+  expiresAt: number;
+};
+
+const postsListCache = new Map<string, CacheEntry<{ posts: Post[]; total: number }>>();
+const postByDcIdCache = new Map<string, CacheEntry<Post | null>>();
+const pendingPostByDcId = new Map<string, Promise<Post | null>>();
+
+const getCacheValue = <T,>(cache: Map<string, CacheEntry<T>>, key: string): T | undefined => {
+  const entry = cache.get(key);
+  if (!entry) return undefined;
+
+  if (entry.expiresAt < Date.now()) {
+    cache.delete(key);
+    return undefined;
+  }
+
+  return entry.value;
+};
+
+const setCacheValue = <T,>(cache: Map<string, CacheEntry<T>>, key: string, value: T, ttlMs: number) => {
+  cache.set(key, {
+    value,
+    expiresAt: Date.now() + ttlMs,
+  });
+};
+
+const invalidateReadCaches = (dcId?: string) => {
+  cachedCategories = null;
+  postsListCache.clear();
+  if (dcId) {
+    postByDcIdCache.delete(dcId);
+    pendingPostByDcId.delete(dcId);
+  } else {
+    postByDcIdCache.clear();
+    pendingPostByDcId.clear();
+  }
+};
+
 const url = (process.env.TURSO_DATABASE_URL || "").trim();
 const authToken = (process.env.TURSO_AUTH_TOKEN || "").trim();
 
@@ -43,17 +90,27 @@ export const libsqlClient = createClient({
       )
     `);
 
-    // Create high-performance indexes to guarantee sub-millisecond query execution speeds
-    await libsqlClient.execute(`
-      CREATE INDEX IF NOT EXISTS idx_posts_category_id_desc ON posts(category, id DESC)
-    `);
-    await libsqlClient.execute(`
-      CREATE INDEX IF NOT EXISTS idx_posts_id_desc ON posts(id DESC)
-    `);
+    await Promise.all([
+      libsqlClient.execute(`
+        CREATE INDEX IF NOT EXISTS idx_posts_category_id_desc ON posts(category, id DESC)
+      `),
+      libsqlClient.execute(`
+        CREATE INDEX IF NOT EXISTS idx_posts_id_desc ON posts(id DESC)
+      `),
+      libsqlClient.execute(`
+        CREATE INDEX IF NOT EXISTS idx_posts_author_id_desc ON posts(author, id DESC)
+      `),
+      libsqlClient.execute(`
+        CREATE INDEX IF NOT EXISTS idx_posts_gallery_dc_id ON posts(gallery_id, dc_id)
+      `),
+      libsqlClient.execute(`
+        CREATE INDEX IF NOT EXISTS idx_posts_archived_at_desc ON posts(archived_at DESC)
+      `),
+    ]);
 
     console.log("✅ [Turso] Database schema and high-performance indexes initialized successfully.");
-  } catch (e: any) {
-    console.error("❌ [Turso] Failed to initialize database schema/indexes:", e.message);
+  } catch (e: unknown) {
+    console.error("Turso failed to initialize database schema/indexes:", errorMessage(e));
   }
 })();
 
@@ -79,11 +136,41 @@ export interface Post {
   archived_at?: string;
 }
 
+type DbRow = Record<string, unknown>;
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+const rowToPost = (r: DbRow, includeBody: boolean): Post => ({
+  id: Number(r.id),
+  dc_id: String(r.dc_id),
+  gallery_id: String(r.gallery_id),
+  category: r.category ? String(r.category) : undefined,
+  title: String(r.title),
+  author: String(r.author),
+  author_ip: r.author_ip ? String(r.author_ip) : null,
+  date: String(r.date),
+  views: Number(r.views),
+  likes: Number(r.likes),
+  comments_count: Number(r.comments_count),
+  content_html: includeBody ? String(r.content_html) : "",
+  images_json: includeBody ? String(r.images_json) : "[]",
+  original_url: includeBody ? String(r.original_url) : "",
+  has_image: Boolean(r.has_image),
+  has_video: Boolean(r.has_video),
+  is_mobile_written: Boolean(r.is_mobile_written),
+  comments_json: includeBody ? String(r.comments_json) : "[]",
+  archived_at: r.archived_at ? String(r.archived_at) : undefined,
+});
+
 export const dbApi = {
   insertPost: async (post: Omit<Post, 'id' | 'archived_at'>): Promise<number> => {
+    invalidateReadCaches(post.dc_id);
+
     // 1. Immediately insert the post with the original DC Inside image URLs
     // Using ON CONFLICT(dc_id) DO UPDATE for perfect upsert support in SQLite!
-    await libsqlClient.execute({
+    const upsertResult = await libsqlClient.execute({
       sql: `
         INSERT INTO posts (
           dc_id, gallery_id, category, title, author, author_ip, date,
@@ -107,6 +194,7 @@ export const dbApi = {
           has_video = excluded.has_video,
           is_mobile_written = excluded.is_mobile_written,
           comments_json = excluded.comments_json
+        RETURNING id
       `,
       args: [
         post.dc_id,
@@ -129,12 +217,7 @@ export const dbApi = {
       ]
     });
 
-    // Retrieve the row ID
-    const selectResult = await libsqlClient.execute({
-      sql: "SELECT id FROM posts WHERE dc_id = ?",
-      args: [post.dc_id]
-    });
-    const postId = Number(selectResult.rows[0]?.id || 0);
+    const postId = Number(upsertResult.rows[0]?.id || 0);
 
     // 2. Fire and forget: Upload to ImgBB and update the database in the background!
     // Deferred by 1000ms to run completely isolated from the current Next.js HTTP render context.
@@ -153,9 +236,10 @@ export const dbApi = {
               postId
             ]
           });
+          invalidateReadCaches(post.dc_id);
           console.log(`✅ [Background ImgBB] Successfully completed background upload for post #${postId}`);
-        } catch (bgErr: any) {
-          console.error(`❌ [Background ImgBB] Error in background task for post #${postId}:`, bgErr.message);
+        } catch (bgErr: unknown) {
+          console.error(`[Background ImgBB] Error in background task for post #${postId}:`, errorMessage(bgErr));
         }
       })();
     }, 1000);
@@ -164,10 +248,14 @@ export const dbApi = {
   },
   
   getPosts: async (queryText?: string, searchType: string = 'all', page?: number, limit?: number, category?: string): Promise<{ posts: Post[]; total: number }> => {
-    let sql = "SELECT * FROM posts";
+    const cacheKey = JSON.stringify([queryText || "", searchType, page || 0, limit || 0, category || "all"]);
+    const cached = getCacheValue(postsListCache, cacheKey);
+    if (cached) return cached;
+
+    let sql = "SELECT id, dc_id, gallery_id, category, title, author, author_ip, date, views, likes, comments_count, has_image, has_video, is_mobile_written, archived_at FROM posts";
     let countSql = "SELECT COUNT(*) as count FROM posts";
-    const args: any[] = [];
-    const countArgs: any[] = [];
+    const args: Array<string | number> = [];
+    const countArgs: string[] = [];
     const whereClauses: string[] = [];
 
     if (category && category !== "all") {
@@ -218,42 +306,30 @@ export const dbApi = {
         libsqlClient.execute({ sql: countSql, args: countArgs })
       ]);
 
-      const posts: Post[] = rowsResult.rows.map((r: any) => ({
-        id: Number(r.id),
-        dc_id: String(r.dc_id),
-        gallery_id: String(r.gallery_id),
-        category: r.category ? String(r.category) : undefined,
-        title: String(r.title),
-        author: String(r.author),
-        author_ip: r.author_ip ? String(r.author_ip) : null,
-        date: String(r.date),
-        views: Number(r.views),
-        likes: Number(r.likes),
-        comments_count: Number(r.comments_count),
-        content_html: String(r.content_html),
-        images_json: String(r.images_json),
-        original_url: String(r.original_url),
-        has_image: Boolean(r.has_image),
-        has_video: Boolean(r.has_video),
-        is_mobile_written: Boolean(r.is_mobile_written),
-        comments_json: String(r.comments_json),
-        archived_at: r.archived_at ? String(r.archived_at) : undefined,
-      }));
+      const posts: Post[] = rowsResult.rows.map((r) => rowToPost(r as DbRow, false));
 
       const total = Number(countResult.rows[0]?.count || 0);
-      return { posts, total };
-    } catch (err: any) {
-      console.error("Turso getPosts error:", err.message);
+      const payload = { posts, total };
+      setCacheValue(postsListCache, cacheKey, payload, LIST_CACHE_TTL_MS);
+      return payload;
+    } catch (err: unknown) {
+      console.error("Turso getPosts error:", errorMessage(err));
       return { posts: [], total: 0 };
     }
   },
 
   getAllCategories: async (): Promise<string[]> => {
+    const now = Date.now();
+    if (cachedCategories && (now - categoriesCacheTime < 60000)) {
+      return cachedCategories;
+    }
     try {
       const result = await libsqlClient.execute("SELECT DISTINCT category FROM posts WHERE category IS NOT NULL AND category != '' ORDER BY category ASC");
-      return result.rows.map(row => String(row.category));
-    } catch (err: any) {
-      console.error("Turso getAllCategories error:", err.message);
+      cachedCategories = result.rows.map(row => String(row.category));
+      categoriesCacheTime = now;
+      return cachedCategories;
+    } catch (err: unknown) {
+      console.error("Turso getAllCategories error:", errorMessage(err));
       return [];
     }
   },
@@ -267,66 +343,44 @@ export const dbApi = {
       const r = result.rows[0];
       if (!r) return null;
 
-      return {
-        id: Number(r.id),
-        dc_id: String(r.dc_id),
-        gallery_id: String(r.gallery_id),
-        category: r.category ? String(r.category) : undefined,
-        title: String(r.title),
-        author: String(r.author),
-        author_ip: r.author_ip ? String(r.author_ip) : null,
-        date: String(r.date),
-        views: Number(r.views),
-        likes: Number(r.likes),
-        comments_count: Number(r.comments_count),
-        content_html: String(r.content_html),
-        images_json: String(r.images_json),
-        original_url: String(r.original_url),
-        has_image: Boolean(r.has_image),
-        has_video: Boolean(r.has_video),
-        is_mobile_written: Boolean(r.is_mobile_written),
-        comments_json: String(r.comments_json),
-        archived_at: r.archived_at ? String(r.archived_at) : undefined,
-      };
-    } catch (err: any) {
-      console.error("Turso getPostById error:", err.message);
+      return rowToPost(r as DbRow, true);
+    } catch (err: unknown) {
+      console.error("Turso getPostById error:", errorMessage(err));
       return null;
     }
   },
 
   getPostByDcId: async (dcId: string): Promise<Post | null> => {
+    const cached = getCacheValue(postByDcIdCache, dcId);
+    if (cached !== undefined) return cached;
+
+    const pending = pendingPostByDcId.get(dcId);
+    if (pending) return pending;
+
+    const queryPromise = (async () => {
     try {
       const result = await libsqlClient.execute({
         sql: "SELECT * FROM posts WHERE dc_id = ?",
         args: [dcId]
       });
       const r = result.rows[0];
-      if (!r) return null;
+      if (!r) {
+        setCacheValue(postByDcIdCache, dcId, null, POST_CACHE_TTL_MS);
+        return null;
+      }
 
-      return {
-        id: Number(r.id),
-        dc_id: String(r.dc_id),
-        gallery_id: String(r.gallery_id),
-        category: r.category ? String(r.category) : undefined,
-        title: String(r.title),
-        author: String(r.author),
-        author_ip: r.author_ip ? String(r.author_ip) : null,
-        date: String(r.date),
-        views: Number(r.views),
-        likes: Number(r.likes),
-        comments_count: Number(r.comments_count),
-        content_html: String(r.content_html),
-        images_json: String(r.images_json),
-        original_url: String(r.original_url),
-        has_image: Boolean(r.has_image),
-        has_video: Boolean(r.has_video),
-        is_mobile_written: Boolean(r.is_mobile_written),
-        comments_json: String(r.comments_json),
-        archived_at: r.archived_at ? String(r.archived_at) : undefined,
-      };
-    } catch (err: any) {
-      console.error("Turso getPostByDcId error:", err.message);
+      const post = rowToPost(r as DbRow, true);
+      setCacheValue(postByDcIdCache, dcId, post, POST_CACHE_TTL_MS);
+      return post;
+    } catch (err: unknown) {
+      console.error("Turso getPostByDcId error:", errorMessage(err));
       return null;
+    } finally {
+      pendingPostByDcId.delete(dcId);
     }
+    })();
+
+    pendingPostByDcId.set(dcId, queryPromise);
+    return queryPromise;
   }
 };

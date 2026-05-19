@@ -14,6 +14,11 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="theme-color" content="#d22d2d" />
+        
         <link rel="preload" href="/AppleSDGothicNeoR.ttf" as="font" type="font/ttf" crossOrigin="anonymous" />
         <link rel="preload" href="/AppleSDGothicNeoM.ttf" as="font" type="font/ttf" crossOrigin="anonymous" />
         <link rel="preload" href="/AppleSDGothicNeoB.ttf" as="font" type="font/ttf" crossOrigin="anonymous" />

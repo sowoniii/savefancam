@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { scrapeDcPost } from '@/lib/scraper';
 import { dbApi } from '@/lib/db';
+import { revalidatePath } from 'next/cache';
 
 
 export async function POST(request: Request) {
@@ -16,7 +17,8 @@ export async function POST(request: Request) {
     
     // 2. Save to database
     const insertedId = await dbApi.insertPost(postData);
-
+    revalidatePath("/");
+    revalidatePath(`/post/${postData.dc_id}`);
 
 
     return NextResponse.json({ 
@@ -24,10 +26,11 @@ export async function POST(request: Request) {
       post: { ...postData, id: insertedId }
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Scraping error:", error);
+    const message = error instanceof Error ? error.message : 'Failed to archive post';
     return NextResponse.json(
-      { error: error.message || 'Failed to archive post' }, 
+      { error: message },
       { status: 500 }
     );
   }

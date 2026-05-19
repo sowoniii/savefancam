@@ -1,5 +1,8 @@
 import * as cheerio from "cheerio";
 
+const SCRAPER_TIMEOUT_MS = Number(process.env.SCRAPER_TIMEOUT_MS || 10000);
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+
 async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 3, delay = 1000): Promise<Response> {
   const headers = {
     "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
@@ -12,8 +15,10 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 
   };
 
   for (let i = 0; i < retries; i++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), SCRAPER_TIMEOUT_MS);
     try {
-      const res = await fetch(url, { ...options, headers });
+      const res = await fetch(url, { ...options, headers, signal: controller.signal });
       if (res.ok) return res;
       
       // Retry for rate limiting (429) or transient server errors (5xx)
@@ -23,11 +28,14 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 
         // Return immediately for 403, 404, etc. to avoid unnecessary delay
         return res;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (i === retries - 1) throw err;
-      console.warn(`[Scraper] Network error fetching ${url}: ${err.message}. Retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
+      console.warn(`[Scraper] Network error fetching ${url}: ${errorMessage(err)}. Retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
+    } finally {
+      clearTimeout(timeout);
     }
-    await new Promise((resolve) => setTimeout(resolve, delay));
+    const jitter = Math.floor(Math.random() * 250);
+    await new Promise((resolve) => setTimeout(resolve, delay + jitter));
     delay *= 2; // Exponential backoff
   }
   throw new Error(`Failed to fetch ${url} after ${retries} attempts.`);
@@ -72,7 +80,7 @@ export async function scrapeDcPost(url: string) {
         }
       }
     }
-  } catch (e) {
+  } catch {
     throw new Error("Invalid URL format");
   }
 
@@ -173,7 +181,7 @@ export async function scrapeDcPost(url: string) {
   // Extract videos (mp4, webm) and proxy them
   contentArea.find("video, source").each((_, el) => {
     // Lazy loaded video sources might use data-src
-    let src = $(el).attr("data-src") || $(el).attr("src");
+    const src = $(el).attr("data-src") || $(el).attr("src");
     if (src) {
       has_video = true;
       $(el).attr("src", `/api/proxy-image?url=${encodeURIComponent(src)}`);
@@ -181,7 +189,7 @@ export async function scrapeDcPost(url: string) {
     }
     // Handle poster attribute on video
     if (el.tagName === 'video') {
-      let poster = $(el).attr("data-poster") || $(el).attr("poster");
+      const poster = $(el).attr("data-poster") || $(el).attr("poster");
       if (poster) {
         $(el).attr("poster", `/api/proxy-image?url=${encodeURIComponent(poster)}`);
         $(el).removeAttr("data-poster");
@@ -193,7 +201,7 @@ export async function scrapeDcPost(url: string) {
   const has_image = images.length > 0;
 
   // Extract comments
-  const comments: any[] = [];
+  const comments: { author: string; ip: string; text: string; date: string; isReply: boolean }[] = [];
   $(".all-comment-lst > li").each((_, el) => {
     const $el = $(el);
     const author = $el.find(".nick").text().trim();
@@ -249,7 +257,7 @@ export async function scrapeDcPost(url: string) {
 }
 
 export async function scrapeDcGalleryList(galleryId: string, isMini: boolean = true, searchHead?: string, page: number = 1) {
-  let typePrefix = isMini ? "mini" : "board";
+  const typePrefix = isMini ? "mini" : "board";
   let targetUrl = `https://m.dcinside.com/${typePrefix}/${galleryId}`;
   
   const queryParams = new URLSearchParams();

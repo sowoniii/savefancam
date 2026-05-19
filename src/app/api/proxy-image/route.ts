@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const PROXY_TIMEOUT_MS = Number(process.env.PROXY_IMAGE_TIMEOUT_MS || 15000);
+const ALLOWED_HOSTS = new Set([
+  'dcimg1.dcinside.com',
+  'dcimg2.dcinside.com',
+  'dcimg3.dcinside.com',
+  'dcimg4.dcinside.com',
+  'dccdn11.dcinside.co.kr',
+  'nstatic.dcinside.com',
+  'm.dcinside.com',
+  'gall.dcinside.com',
+  'image.dcinside.com',
+]);
+
 export async function GET(request: NextRequest) {
   const url = request.nextUrl.searchParams.get('url');
 
@@ -8,12 +21,28 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const parsedUrl = new URL(url);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return new NextResponse('Only HTTP(S) URLs are allowed', { status: 400 });
+    }
+    const hostname = parsedUrl.hostname.toLowerCase();
+    const isAllowedHost = ALLOWED_HOSTS.has(hostname) || 
+                          hostname.endsWith('.dcinside.com') || 
+                          hostname.endsWith('.dcinside.co.kr');
+
+    if (!isAllowedHost) {
+      return new NextResponse('Host is not allowed', { status: 400 });
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
     const response = await fetch(url, {
       headers: {
         'Referer': 'https://m.dcinside.com/',
         'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
       },
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
       return new NextResponse(`Failed to fetch image: ${response.statusText}`, { status: response.status });
@@ -47,9 +76,9 @@ export async function GET(request: NextRequest) {
       } else if (hex.startsWith('52494646') && hex.substring(16, 24) === '57454250') { // RIFF ... WEBP
         contentType = 'image/webp';
       } else if (hex.startsWith('1a45dfa3')) { // WebM
-        contentType = 'image/webm';
+        contentType = 'video/webm';
       } else if (hex.substring(8, 16) === '66747970') { // ftyp (MP4)
-        contentType = 'image/mp4';
+        contentType = 'video/mp4';
       }
     }
 
@@ -68,9 +97,9 @@ export async function GET(request: NextRequest) {
         } else if (filename.endsWith('.webp')) {
           contentType = 'image/webp';
         } else if (filename.endsWith('.mp4')) {
-          contentType = 'image/mp4';
+          contentType = 'video/mp4';
         } else if (filename.endsWith('.webm')) {
-          contentType = 'image/webm';
+          contentType = 'video/webm';
         }
       }
     }
@@ -78,6 +107,8 @@ export async function GET(request: NextRequest) {
     const headers = new Headers();
     headers.set('Content-Type', contentType);
     headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+    headers.set('Access-Control-Allow-Origin', '*');
+    headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
 
     // 3. Reconstruct a new ReadableStream using the first chunk and the remaining reader stream
     // to preserve memory-efficient response streaming (no OOM crashes for large GIFs/videos).
@@ -109,8 +140,9 @@ export async function GET(request: NextRequest) {
       status: response.status,
       headers,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Proxy Media Error:', error);
-    return new NextResponse(`Error fetching media: ${error.message}`, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    return new NextResponse(`Error fetching media: ${message}`, { status: 500 });
   }
 }

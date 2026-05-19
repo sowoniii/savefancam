@@ -131,6 +131,10 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
         img.removeAttribute('loading');
         img.removeAttribute('srcset');
         img.removeAttribute('sizes');
+        // Force opacity to 1 and disable CSS keyframe fade-in animations during SVG rasterization
+        img.style.setProperty('opacity', '1', 'important');
+        img.style.setProperty('animation', 'none', 'important');
+        img.style.setProperty('transition', 'none', 'important');
       });
 
       await Promise.all(
@@ -319,6 +323,7 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
       clone.style.position = 'relative';
       clone.style.left = '0';
       clone.style.top = '0';
+      clone.style.paddingBottom = '80px'; // Prevent bottom clipping of comments list due to SVG text rendering metrics
 
       captureFrame.appendChild(clone);
       wrapper.appendChild(captureFrame);

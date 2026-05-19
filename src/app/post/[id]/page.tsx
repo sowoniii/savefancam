@@ -6,6 +6,7 @@ import CaptureButton from "@/components/CaptureButton";
 
 // Enable full static caching with dynamic server fallback (0ms loading speed via ISR)
 export const dynamicParams = true;
+export const revalidate = 15;
 
 type DcComment = {
   author: string;
@@ -116,6 +117,15 @@ const prioritizeFirstContentImage = (html: string) => {
   });
 };
 
+const processPostContentHtml = (html: string) => {
+  // Ensure all image tags have crossorigin="anonymous" to allow canvas to read their pixel bytes for screen capture
+  const processed = html.replace(/<img\b([^>]*)/gi, (match, body) => {
+    if (/\bcrossorigin=/i.test(body)) return match;
+    return `<img crossorigin="anonymous"${body}`;
+  });
+  return prioritizeFirstContentImage(processed);
+};
+
 const getFirstImageSrc = (html: string) => {
   const match = html.match(/<img\b[^>]*\ssrc=(["'])(.*?)\1/i);
   return match?.[2];
@@ -130,7 +140,7 @@ export default async function PostDetail({ params }: { params: Promise<{ id: str
   }
 
   const firstImageSrc = getFirstImageSrc(post.content_html);
-  const contentHtml = prioritizeFirstContentImage(post.content_html);
+  const contentHtml = processPostContentHtml(post.content_html);
 
   return (
     <>

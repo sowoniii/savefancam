@@ -1,7 +1,7 @@
 import NextLink from "next/link";
 import { dbApi } from "@/lib/db";
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 3;
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string; type?: string; page?: string; category?: string }> }) {
   const resolvedSearchParams = await searchParams;
@@ -11,11 +11,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
   const selectedCategory = resolvedSearchParams.category || "all";
   const limit = 20;
 
-  // Retrieve filtered posts and total counts
-  const { posts, total } = await dbApi.getPosts(q, type, page, limit, selectedCategory);
-
-  // Dynamically load all categories stored in Turso
-  const categories = await dbApi.getAllCategories();
+  const [{ posts, total }, categories] = await Promise.all([
+    dbApi.getPosts(q, type, page, limit, selectedCategory),
+    dbApi.getAllCategories(),
+  ]);
 
   return (
     <>
@@ -143,7 +142,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
           {posts.map((post) => (
             <li key={post.id}>
               <div className="gall-detail-lnktb">
-                <NextLink href={`/post/${post.dc_id}`} className="lt">
+                <NextLink href={`/post/${post.dc_id}`} className="lt" prefetch={true}>
                   <span className="subject-add">
                     {post.has_image && <span className="sp-lst sp-lst-img">이미지</span>}
                     {post.has_video && <span className="sp-lst sp-lst-movie">동영상</span>}
@@ -159,7 +158,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
                   </ul>
                 </NextLink>
                 {post.comments_count > 0 && (
-                  <NextLink href={`/post/${post.dc_id}#comment_box`} className="rt">
+                  <NextLink href={`/post/${post.dc_id}#comment_box`} className="rt" prefetch={true}>
                     <span className="ct">{post.comments_count}</span>
                   </NextLink>
                 )}

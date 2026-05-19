@@ -1,4 +1,6 @@
-export async function uploadPostImagesToImgBB(post: any): Promise<any> {
+import type { Post } from "./db";
+
+export async function uploadPostImagesToImgBB(post: Omit<Post, 'id' | 'archived_at'>): Promise<Omit<Post, 'id' | 'archived_at'>> {
   const apiKey = process.env.IMGBB_API_KEY;
   if (!apiKey) {
     console.log("ℹ️ [ImgBB] No API Key found. Skipping image upload to ImgBB.");
@@ -22,7 +24,7 @@ export async function uploadPostImagesToImgBB(post: any): Promise<any> {
   console.log(`[ImgBB] Processing ${images.length} images with concurrent sliding-window worker pool...`);
 
   const results: { originalUrl: string; newUrl: string }[] = [];
-  const concurrency = 8; // Optimal number of parallel workers
+  const concurrency = Math.max(1, Number(process.env.IMGBB_UPLOAD_CONCURRENCY || 3));
 
   let currentIndex = 0;
 
@@ -70,8 +72,9 @@ export async function uploadPostImagesToImgBB(post: any): Promise<any> {
         } else {
           throw new Error("ImgBB API did not return an image URL");
         }
-      } catch (err: any) {
-        console.error(`[ImgBB] Failed to upload image [${index + 1}/${images.length}] (${originalUrl}):`, err.message);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[ImgBB] Failed to upload image [${index + 1}/${images.length}] (${originalUrl}):`, message);
         results.push({ originalUrl, newUrl: originalUrl }); // Fallback to original URL
       }
     }
