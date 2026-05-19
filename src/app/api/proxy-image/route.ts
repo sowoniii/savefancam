@@ -1,18 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const PROXY_TIMEOUT_MS = Number(process.env.PROXY_IMAGE_TIMEOUT_MS || 15000);
-const ALLOWED_HOSTS = new Set([
-  'dcimg1.dcinside.com',
-  'dcimg2.dcinside.com',
-  'dcimg3.dcinside.com',
-  'dcimg4.dcinside.com',
-  'dccdn11.dcinside.co.kr',
-  'nstatic.dcinside.com',
-  'm.dcinside.com',
-  'gall.dcinside.com',
-  'image.dcinside.com',
-]);
-
 export async function GET(request: NextRequest) {
   const url = request.nextUrl.searchParams.get('url');
 
@@ -26,12 +14,19 @@ export async function GET(request: NextRequest) {
       return new NextResponse('Only HTTP(S) URLs are allowed', { status: 400 });
     }
     const hostname = parsedUrl.hostname.toLowerCase();
-    const isAllowedHost = ALLOWED_HOSTS.has(hostname) || 
-                          hostname.endsWith('.dcinside.com') || 
-                          hostname.endsWith('.dcinside.co.kr');
+    
+    // SSRF 방어를 위해 로컬/사설 IP 및 루프백 주소 차단
+    const isLocal = hostname === 'localhost' ||
+                    hostname === '127.0.0.1' ||
+                    hostname.startsWith('10.') ||
+                    hostname.startsWith('192.168.') ||
+                    hostname.startsWith('172.16.') ||
+                    hostname.startsWith('169.254.') ||
+                    hostname.endsWith('.local') ||
+                    hostname.endsWith('.internal');
 
-    if (!isAllowedHost) {
-      return new NextResponse('Host is not allowed', { status: 400 });
+    if (isLocal) {
+      return new NextResponse('Local hosts are not allowed', { status: 400 });
     }
 
     const controller = new AbortController();
