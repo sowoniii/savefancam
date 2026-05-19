@@ -1,5 +1,38 @@
 import * as cheerio from "cheerio";
 
+async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 3, delay = 1000): Promise<Response> {
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+    "Referer": "https://m.dcinside.com/",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    ...options.headers,
+  };
+
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, { ...options, headers });
+      if (res.ok) return res;
+      
+      // Retry for rate limiting (429) or transient server errors (5xx)
+      if (res.status === 429 || res.status >= 500) {
+        console.warn(`[Scraper] HTTP error ${res.status} when fetching ${url}. Retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
+      } else {
+        // Return immediately for 403, 404, etc. to avoid unnecessary delay
+        return res;
+      }
+    } catch (err: any) {
+      if (i === retries - 1) throw err;
+      console.warn(`[Scraper] Network error fetching ${url}: ${err.message}. Retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    delay *= 2; // Exponential backoff
+  }
+  throw new Error(`Failed to fetch ${url} after ${retries} attempts.`);
+}
+
 export async function scrapeDcPost(url: string) {
   // Convert to mobile URL for easier parsing if it's desktop
   let targetUrl = url;
@@ -48,12 +81,7 @@ export async function scrapeDcPost(url: string) {
   }
 
   // Fetch HTML
-  const response = await fetch(targetUrl, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
-      "Referer": "https://m.dcinside.com/"
-    }
-  });
+  const response = await fetchWithRetry(targetUrl, {});
 
   if (!response.ok) {
     throw new Error(`Failed to fetch post. Status: ${response.status}`);
@@ -87,16 +115,18 @@ export async function scrapeDcPost(url: string) {
   const date = $(".gallview-tit-box .ginfo2 li").last().text().trim();
   
   // Views, Comments, Likes
-  // We can just extract all text and regex it since it's grouped together.
-  const fullText = $("body").text().replace(/\s+/g, " ");
-  
-  const viewsMatch = fullText.match(/조회수\s*([\d,]+)/);
-  const likesMatch = fullText.match(/추천\s*([\d,]+)/);
-  const commentsMatch = fullText.match(/댓글\s*([\d,]+)/);
-  
-  const views = viewsMatch ? parseInt(viewsMatch[1].replace(/,/g, '')) : 0;
-  const likes = likesMatch ? parseInt(likesMatch[1].replace(/,/g, '')) : 0;
-  const comments_count = commentsMatch ? parseInt(commentsMatch[1].replace(/,/g, '')) : 0;
+  // Extract reliably from .ginfo2 container to avoid matching random user content in post body
+  const viewsText = $(".ginfo2 li").filter((_, li) => $(li).text().includes("조회수")).text();
+  const viewsMatch = viewsText.match(/\d+/);
+  const views = viewsMatch ? parseInt(viewsMatch[0], 10) : 0;
+
+  const likesText = $(".ginfo2 li").filter((_, li) => $(li).text().includes("추천")).text();
+  const likesMatch = likesText.match(/\d+/);
+  const likes = likesMatch ? parseInt(likesMatch[0], 10) : 0;
+
+  const commentsText = $(".ginfo2 li").filter((_, li) => $(li).text().includes("댓글")).text();
+  const commentsMatch = commentsText.match(/\d+/);
+  const comments_count = commentsMatch ? parseInt(commentsMatch[0], 10) : 0;
 
   // Content
   let has_video = false;
@@ -168,10 +198,30 @@ export async function scrapeDcPost(url: string) {
     const $el = $(el);
     const author = $el.find(".nick").text().trim();
     const ip = $el.find(".ip").text().trim().replace(/[()]/g, '');
-    const text = $el.find(".txt").html()?.replace(/<br\s*\/?>/g, '\n').replace(/<[^>]*>?/gm, '').trim() || $el.find(".txt").text().trim();
     const date = $el.find(".date").text().trim();
     const isReply = $el.hasClass("comment-add") || $el.find(".sp-reply").length > 0;
     
+    const $txt = $el.find(".txt");
+    const $dccon = $txt.find("img");
+
+    let text = "";
+    if ($dccon.length > 0) {
+      // It's a DCcon comment
+      const src = $dccon.attr("data-gif") || $dccon.attr("data-original") || $dccon.attr("src") || "";
+      if (src) {
+        let absoluteSrc = src;
+        if (absoluteSrc.startsWith("//")) {
+          absoluteSrc = "https:" + absoluteSrc;
+        } else if (absoluteSrc.startsWith("/")) {
+          absoluteSrc = "https://m.dcinside.com" + absoluteSrc;
+        }
+        text = `[dccon:${absoluteSrc}]`;
+      }
+    } else {
+      // It's a regular text comment
+      text = $txt.html()?.replace(/<br\s*\/?>/g, '\n').replace(/<[^>]*>?/gm, '').trim() || $txt.text().trim();
+    }
+
     if (author && text) {
       comments.push({ author, ip, text, date, isReply });
     }
@@ -198,16 +248,29 @@ export async function scrapeDcPost(url: string) {
   };
 }
 
-export async function scrapeDcGalleryList(galleryId: string, isMini: boolean = true) {
+export async function scrapeDcGalleryList(galleryId: string, isMini: boolean = true, searchHead?: string, page: number = 1) {
   let typePrefix = isMini ? "mini" : "board";
-  const targetUrl = `https://m.dcinside.com/${typePrefix}/${galleryId}`;
-
-  const response = await fetch(targetUrl, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
-      "Referer": "https://m.dcinside.com/"
+  let targetUrl = `https://m.dcinside.com/${typePrefix}/${galleryId}`;
+  
+  const queryParams = new URLSearchParams();
+  if (searchHead) {
+    if (isMini) {
+      queryParams.set("headid", searchHead);
+    } else {
+      queryParams.set("headid", searchHead);
+      queryParams.set("headart", searchHead);
     }
-  });
+  }
+  if (page > 1) {
+    queryParams.set("page", String(page));
+  }
+  
+  const queryStr = queryParams.toString();
+  if (queryStr) {
+    targetUrl += `?${queryStr}`;
+  }
+
+  const response = await fetchWithRetry(targetUrl, {});
 
   if (!response.ok) {
     throw new Error(`Failed to fetch gallery list. Status: ${response.status}`);
@@ -216,7 +279,7 @@ export async function scrapeDcGalleryList(galleryId: string, isMini: boolean = t
   const html = await response.text();
   const $ = cheerio.load(html);
 
-  const posts: { url: string; dc_id: string }[] = [];
+  const posts: { url: string; dc_id: string; category: string; likes: number; comment_count: number }[] = [];
 
   $('.gall-detail-lst > li').each((_, el) => {
     const link = $(el).find('a.lt').attr('href');
@@ -226,10 +289,35 @@ export async function scrapeDcGalleryList(galleryId: string, isMini: boolean = t
         absoluteUrl = `https://m.dcinside.com${absoluteUrl}`;
       }
       
-      const parts = absoluteUrl.split('/');
-      const dc_id = parts[parts.length - 1];
-      if (dc_id && !isNaN(Number(dc_id))) {
-        posts.push({ url: absoluteUrl, dc_id });
+      try {
+        const urlObj = new URL(absoluteUrl, "https://m.dcinside.com");
+        const cleanPath = urlObj.pathname;
+        const parts = cleanPath.split('/').filter(Boolean);
+        const dc_id = parts[parts.length - 1];
+        
+        // Extract category from first li in ul.ginfo
+        const category = $(el).find('ul.ginfo li').first().text().trim() || "일반";
+
+        // Extract recommended count (likes) in a robust way
+        const likesText = $(el).find('ul.ginfo li').filter((_, li) => $(li).text().includes("추천")).text();
+        const likesMatch = likesText.match(/\d+/);
+        const likes = likesMatch ? parseInt(likesMatch[0], 10) : 0;
+
+        // Extract comment count from the right side comment icon anchor link's inner text
+        const ctText = $(el).find('a.rt span.ct').text().trim();
+        const comment_count = ctText ? parseInt(ctText, 10) : 0;
+
+        if (dc_id && !isNaN(Number(dc_id))) {
+          posts.push({ 
+            url: absoluteUrl, 
+            dc_id, 
+            category,
+            likes: isNaN(likes) ? 0 : likes,
+            comment_count: isNaN(comment_count) ? 0 : comment_count 
+          });
+        }
+      } catch (err) {
+        console.error("[Scraper] Failed to parse post URL:", absoluteUrl, err);
       }
     }
   });

@@ -16,7 +16,7 @@ export const libsqlClient = createClient({
   authToken,
 });
 
-// 1. Automatic Zero-Config SQLite Table Initialization on startup
+// 1. Automatic Zero-Config SQLite Table & Index Initialization on startup
 (async () => {
   try {
     await libsqlClient.execute(`
@@ -42,9 +42,18 @@ export const libsqlClient = createClient({
         archived_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    console.log("✅ [Turso] Database schema initialized successfully (posts table checked/created).");
+
+    // Create high-performance indexes to guarantee sub-millisecond query execution speeds
+    await libsqlClient.execute(`
+      CREATE INDEX IF NOT EXISTS idx_posts_category_id_desc ON posts(category, id DESC)
+    `);
+    await libsqlClient.execute(`
+      CREATE INDEX IF NOT EXISTS idx_posts_id_desc ON posts(id DESC)
+    `);
+
+    console.log("✅ [Turso] Database schema and high-performance indexes initialized successfully.");
   } catch (e: any) {
-    console.error("❌ [Turso] Failed to initialize database schema:", e.message);
+    console.error("❌ [Turso] Failed to initialize database schema/indexes:", e.message);
   }
 })();
 
@@ -154,12 +163,18 @@ export const dbApi = {
     return postId;
   },
   
-  getPosts: async (queryText?: string, searchType: string = 'all', page?: number, limit?: number): Promise<{ posts: Post[]; total: number }> => {
+  getPosts: async (queryText?: string, searchType: string = 'all', page?: number, limit?: number, category?: string): Promise<{ posts: Post[]; total: number }> => {
     let sql = "SELECT * FROM posts";
     let countSql = "SELECT COUNT(*) as count FROM posts";
     const args: any[] = [];
     const countArgs: any[] = [];
     const whereClauses: string[] = [];
+
+    if (category && category !== "all") {
+      whereClauses.push("category = ?");
+      args.push(category);
+      countArgs.push(category);
+    }
 
     if (queryText) {
       const searchPattern = `%${queryText}%`;
@@ -230,6 +245,16 @@ export const dbApi = {
     } catch (err: any) {
       console.error("Turso getPosts error:", err.message);
       return { posts: [], total: 0 };
+    }
+  },
+
+  getAllCategories: async (): Promise<string[]> => {
+    try {
+      const result = await libsqlClient.execute("SELECT DISTINCT category FROM posts WHERE category IS NOT NULL AND category != '' ORDER BY category ASC");
+      return result.rows.map(row => String(row.category));
+    } catch (err: any) {
+      console.error("Turso getAllCategories error:", err.message);
+      return [];
     }
   },
   

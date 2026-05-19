@@ -4,9 +4,8 @@ import { dbApi } from "@/lib/db";
 import { notFound } from "next/navigation";
 import CaptureButton from "@/components/CaptureButton";
 
-// Enable full static caching. The page will be cached permanently on the first hit,
-// and regenerated instantly on-demand via revalidatePath when a new archive is requested!
-export const revalidate = false;
+// Enable full static caching with dynamic server fallback (0ms loading speed via ISR)
+export const dynamicParams = true;
 
 type DcComment = {
   author: string;
@@ -23,6 +22,32 @@ const renderCommentText = (text: string) => {
   const combinedRegex = /(@(?:글쓴 익명|익명\s?\d+|글쓴이|[a-zA-Z0-9가-힣_]+))|(https?:\/\/[^\s]+)/g;
 
   return text.split('\n').map((line: string, lineIdx: number, arr: string[]) => {
+    // 1. Detect and render DCcon patterns: [dccon:URL]
+    const dcconMatch = line.trim().match(/^\[dccon:(https?:\/\/[^\]]+)\]$/);
+    if (dcconMatch) {
+      const dcconUrl = dcconMatch[1];
+      // Proxying the DCcon URL ensures bypassing any DC Inside referrer blocks
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(dcconUrl)}`;
+      return (
+        <React.Fragment key={lineIdx}>
+          <img 
+            src={proxyUrl} 
+            alt="디시콘" 
+            className="comment-dccon"
+            style={{ 
+              display: "block", 
+              maxWidth: "100px", 
+              height: "auto", 
+              margin: "4px 0", 
+              borderRadius: "4px",
+              pointerEvents: "none"
+            }}
+          />
+          {lineIdx !== arr.length - 1 && <br />}
+        </React.Fragment>
+      );
+    }
+
     const parts = [];
     let lastIndex = 0;
     let match;
