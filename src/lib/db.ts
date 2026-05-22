@@ -66,6 +66,17 @@ export const libsqlClient = createClient({
 // 1. Automatic Zero-Config SQLite Table & Index Initialization on startup
 (async () => {
   try {
+    // 🔒 Prevent SQLITE_BUSY: database is locked errors by optimizing local SQLite settings
+    if ((url || "file:dummy.db").startsWith("file:")) {
+      try {
+        await libsqlClient.execute("PRAGMA journal_mode = WAL");
+        await libsqlClient.execute("PRAGMA busy_timeout = 10000");
+        console.log("⚙️ [Turso] SQLite WAL mode and 10s busy_timeout set successfully.");
+      } catch (pragmaErr) {
+        console.warn("⚠️ Failed to apply SQLite PRAGMAs:", pragmaErr);
+      }
+    }
+
     await libsqlClient.execute(`
       CREATE TABLE IF NOT EXISTS posts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

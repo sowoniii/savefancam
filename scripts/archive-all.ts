@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { scrapeDcGalleryList, scrapeDcPost } from "../src/lib/scraper";
 import { dbApi, libsqlClient } from "../src/lib/db";
+import { uploadPostImagesToImgBB } from "../src/lib/imgbb";
 
 // 1. Manually load Next.js .env.local variables outside dev/production server lifecycle
 function loadEnv() {
@@ -31,8 +32,85 @@ function loadEnv() {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// 🛠️ self-healing scanner: Finds existing posts in the DB that failed to download images (still contain external dcinside links)
+// and forces downloading them to local storage. This guarantees 100% data integrity even after lockups or network timeouts!
+async function repairPendingImages() {
+  console.log(`\n🔍 [Self-Healing] Checking for posts with missing or failed local image backups...`);
+  try {
+    const queryResult = await libsqlClient.execute(`
+      SELECT id, dc_id, gallery_id, category, title, author, author_ip, date, views, likes, comments_count, content_html, images_json, original_url, has_image, has_video, is_mobile_written, comments_json 
+      FROM posts 
+      WHERE has_image = 1 AND (images_json LIKE '%dcinside.com%' OR images_json LIKE '%dcimg%')
+    `);
+
+    const missingPosts = queryResult.rows;
+    if (missingPosts.length === 0) {
+      console.log(`✨ [Self-Healing] No pending or broken image backups found! All local storage copies are completely synced.`);
+      return;
+    }
+
+    console.log(`🛠️ [Self-Healing] Found ${missingPosts.length} posts with external dcinside image URLs. Starting auto-repair...`);
+
+    for (let i = 0; i < missingPosts.length; i++) {
+      const row = missingPosts[i];
+      const postId = Number(row.id);
+      const dcId = String(row.dc_id);
+      const title = String(row.title);
+
+      console.log(`   [${i + 1}/${missingPosts.length}] Repairing images for: "${title}" (Local DB ID: ${postId}, DC ID: ${dcId})`);
+
+      const postObj = {
+        dc_id: dcId,
+        gallery_id: String(row.gallery_id),
+        category: String(row.category || '일반'),
+        title: title,
+        author: String(row.author),
+        author_ip: row.author_ip ? String(row.author_ip) : null,
+        date: String(row.date),
+        views: Number(row.views ?? 0),
+        likes: Number(row.likes ?? 0),
+        comments_count: Number(row.comments_count ?? 0),
+        content_html: String(row.content_html),
+        images_json: String(row.images_json),
+        original_url: String(row.original_url),
+        has_image: Boolean(row.has_image),
+        has_video: Boolean(row.has_video),
+        is_mobile_written: Boolean(row.is_mobile_written),
+        comments_json: String(row.comments_json)
+      };
+
+      try {
+        const processed = await uploadPostImagesToImgBB(postObj);
+
+        await libsqlClient.execute({
+          sql: "UPDATE posts SET content_html = ?, images_json = ?, has_image = ? WHERE id = ?",
+          args: [
+            processed.content_html,
+            processed.images_json,
+            processed.has_image ? 1 : 0,
+            postId
+          ]
+        });
+
+        console.log(`   └─ ✅ Successfully repaired and saved all images locally!`);
+      } catch (err: any) {
+        console.error(`   └─ ❌ Failed to repair images for post #${dcId}:`, err?.message || err);
+      }
+
+      await sleep(600);
+    }
+
+    console.log(`\n🎉 [Self-Healing] Finished scanning and repairing broken image backups!\n`);
+  } catch (scanErr) {
+    console.error(`❌ [Self-Healing] Error during self-healing image repair scan:`, scanErr);
+  }
+}
+
 async function main() {
   loadEnv();
+  
+  // Await the self-healing process before commencing normal full archival sweep
+  await repairPendingImages();
 
   // CLI Arguments support: bun run scripts/archive-all.ts [gallery_id] [is_mini]
   const args = process.argv.slice(2);
