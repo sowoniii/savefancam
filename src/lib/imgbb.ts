@@ -1,19 +1,55 @@
 import type { Post } from "./db";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+
+// 🚫 Known dcinside dummy / error / expired image MD5 hashes (to prevent disk space waste)
+const DUMMY_IMAGE_MD5S = new Set([
+  "3984034d00baacccbdb9a597705dc2cb", // "Connecting Hearts" logo.gif (when image is expired or invalid)
+]);
+
+// 💾 Helper to save image to our Oracle cloud VM local storage (public/uploads/)
+function saveImageToLocalStorage(buffer: Buffer, originalUrl: string): string {
+  try {
+    const uploadDir = path.join(process.cwd(), "public", "uploads");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    // Try to extract original file extension, default to 'png'
+    let ext = "png";
+    try {
+      const urlObj = new URL(originalUrl);
+      const extMatch = urlObj.pathname.match(/\.([a-zA-Z0-9]+)(?:[?#]|$)/);
+      if (extMatch) {
+        const parsedExt = extMatch[1].toLowerCase();
+        if (["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov"].includes(parsedExt)) {
+          ext = parsedExt;
+        }
+      }
+    } catch {
+      // Ignored
+    }
+
+    // Generate high-entropy secure unique filename to prevent collisions
+    const fileName = `${Date.now()}_${crypto.randomBytes(4).toString("hex")}.${ext}`;
+    const filePath = path.join(uploadDir, fileName);
+
+    fs.writeFileSync(filePath, buffer);
+    console.log(`💾 [Local Backup] Successfully saved image to Oracle disk: /uploads/${fileName}`);
+    return `/uploads/${fileName}`;
+  } catch (err) {
+    console.error("❌ [Local Backup] Failed to write image to server storage:", err);
+    return originalUrl;
+  }
+}
 
 export async function uploadPostImagesToImgBB(post: Omit<Post, 'id' | 'archived_at'>): Promise<Omit<Post, 'id' | 'archived_at'>> {
-  const apiKey = process.env.IMGBB_API_KEY;
-  if (!apiKey) {
-    console.log("ℹ️ [ImgBB] No API Key found. Skipping image upload to ImgBB.");
-    return post;
-  }
-
-  console.log(`[ImgBB] Starting image upload to ImgBB for post: "${post.title}"...`);
-
   let images: string[] = [];
   try {
     images = JSON.parse(post.images_json || "[]");
   } catch (e) {
-    console.error("[ImgBB] Failed to parse images_json:", e);
+    console.error("[Local Storage] Failed to parse images_json:", e);
     return post;
   }
 
@@ -21,7 +57,7 @@ export async function uploadPostImagesToImgBB(post: Omit<Post, 'id' | 'archived_
     return post;
   }
 
-  console.log(`[ImgBB] Processing ${images.length} images with concurrent sliding-window worker pool...`);
+  console.log(`[Local Storage] Starting direct local backup for ${images.length} images...`);
 
   const results: { originalUrl: string; newUrl: string }[] = [];
   const concurrency = Math.max(1, Number(process.env.IMGBB_UPLOAD_CONCURRENCY || 3));
@@ -32,9 +68,10 @@ export async function uploadPostImagesToImgBB(post: Omit<Post, 'id' | 'archived_
     while (currentIndex < images.length) {
       const index = currentIndex++;
       const originalUrl = images[index];
+      let downloadedBuffer: Buffer | null = null;
 
       try {
-        // 1. Fetch image from DC Inside with spoofed referer header
+        // 1. Download image from DC Inside (with referer spoofing to avoid 403 Forbidden)
         const res = await fetch(originalUrl, {
           headers: {
             "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
@@ -43,39 +80,31 @@ export async function uploadPostImagesToImgBB(post: Omit<Post, 'id' | 'archived_
         });
 
         if (!res.ok) {
-          throw new Error(`Failed to fetch image. Status: ${res.status}`);
+          throw new Error(`Failed to fetch original image. Status: ${res.status}`);
         }
 
-        const buffer = await res.arrayBuffer();
-        const base64Image = Buffer.from(buffer).toString("base64");
+        const arrayBuffer = await res.arrayBuffer();
+        downloadedBuffer = Buffer.from(arrayBuffer);
 
-        // 2. Upload to ImgBB using FormData
-        const formData = new FormData();
-        formData.append("image", base64Image);
-
-        const uploadRes = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
-          method: "POST",
-          body: formData
-        });
-
-        if (!uploadRes.ok) {
-          const errText = await uploadRes.text();
-          throw new Error(`ImgBB Upload failed: ${errText}`);
+        // 2. Detect and filter out DC Inside dummy error images to save disk space
+        const md5 = crypto.createHash("md5").update(downloadedBuffer).digest("hex");
+        if (DUMMY_IMAGE_MD5S.has(md5)) {
+          console.log(`⚠️ [Local Storage] Skipping dummy error image ("Connecting Hearts") [${index + 1}/${images.length}] to save space.`);
+          results.push({ originalUrl, newUrl: originalUrl });
+          continue;
         }
 
-        const uploadData = await uploadRes.json();
-        const newUrl = uploadData.data?.url;
+        // 3. Save directly to Oracle local storage (public/uploads/)
+        console.log(`[Local Storage] Backing up image [${index + 1}/${images.length}] locally.`);
+        const localUrl = saveImageToLocalStorage(downloadedBuffer, originalUrl);
+        results.push({ originalUrl, newUrl: localUrl });
 
-        if (newUrl) {
-          console.log(`[ImgBB] Successfully uploaded image [${index + 1}/${images.length}]: ${newUrl}`);
-          results.push({ originalUrl, newUrl });
-        } else {
-          throw new Error("ImgBB API did not return an image URL");
-        }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`[ImgBB] Failed to upload image [${index + 1}/${images.length}] (${originalUrl}):`, message);
-        results.push({ originalUrl, newUrl: originalUrl }); // Fallback to original URL
+        console.error(`[Local Storage] Backup failed for [${index + 1}/${images.length}] (${originalUrl}): ${message}`);
+        
+        // If downloading the image itself failed, we have no choice but to fallback to raw DC URL
+        results.push({ originalUrl, newUrl: originalUrl });
       }
     }
   }
@@ -89,11 +118,11 @@ export async function uploadPostImagesToImgBB(post: Omit<Post, 'id' | 'archived_
     uploadedMap[r.originalUrl] = r.newUrl;
   }
 
-  // 3. Update images_json array with new ImgBB URLs
+  // 3. Update images_json array with new backup URLs
   const newImages = images.map(url => uploadedMap[url] || url);
   post.images_json = JSON.stringify(newImages);
 
-  // 4. Replace original URLs inside content_html with new ImgBB URLs
+  // 4. Replace original URLs inside content_html with new backup URLs
   let contentHtml = post.content_html;
   for (const originalUrl of Object.keys(uploadedMap)) {
     const newUrl = uploadedMap[originalUrl];
@@ -106,6 +135,6 @@ export async function uploadPostImagesToImgBB(post: Omit<Post, 'id' | 'archived_
   // 5. Update has_image flag
   post.has_image = newImages.length > 0;
 
-  console.log(`[ImgBB] Finished parallel image upload to ImgBB for post: "${post.title}"`);
+  console.log(`[Local Storage] Finished parallel image backup for post: "${post.title}"`);
   return post;
 }
