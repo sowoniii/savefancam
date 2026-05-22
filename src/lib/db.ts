@@ -136,6 +136,61 @@ export interface Post {
   archived_at?: string;
 }
 
+function parseDcDateToSqliteDatetime(dcDateStr: string): string {
+  try {
+    const raw = dcDateStr.trim();
+    if (!raw) throw new Error("Empty date string");
+
+    // 1. If it's already SQLite format, return as is
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) {
+      return raw;
+    }
+
+    // 2. Replace dots with dashes
+    let cleaned = raw.replace(/\./g, "-");
+
+    // 3. If only time is provided (e.g. "19:30:10" or "19:30"), prepend today's date
+    if (!cleaned.includes("-") && cleaned.includes(":")) {
+      const now = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      cleaned = `${todayStr} ${cleaned}`;
+    }
+
+    // 4. If year is 2 digits (e.g. "26-05-22 19:30"), convert to 4 digits
+    if (/^\d{2}-\d{2}-\d{2}/.test(cleaned)) {
+      cleaned = "20" + cleaned;
+    }
+
+    // 5. If seconds are missing (e.g. "2026-05-22 19:30"), append ":00"
+    const spaceParts = cleaned.split(" ");
+    if (spaceParts.length === 2) {
+      const timeParts = spaceParts[1].split(":");
+      if (timeParts.length === 2) {
+        cleaned = `${spaceParts[0]} ${spaceParts[1]}:00`;
+      }
+    }
+
+    // If matches correct format, return
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(cleaned)) {
+      return cleaned;
+    }
+
+    const d = new Date(cleaned);
+    if (!isNaN(d.getTime())) {
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+  } catch (e) {
+    console.error(`Failed to parse DC inside date string: "${dcDateStr}"`, e);
+  }
+
+  // Fallback to current system time
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+
 type DbRow = Record<string, unknown>;
 
 function errorMessage(error: unknown) {
@@ -168,6 +223,8 @@ export const dbApi = {
   insertPost: async (post: Omit<Post, 'id' | 'archived_at'>): Promise<number> => {
     invalidateReadCaches(post.dc_id);
 
+    const archivedAt = parseDcDateToSqliteDatetime(post.date);
+
     // 1. Immediately insert the post with the original DC Inside image URLs
     // Using ON CONFLICT(dc_id) DO UPDATE for perfect upsert support in SQLite!
     const upsertResult = await libsqlClient.execute({
@@ -175,8 +232,8 @@ export const dbApi = {
         INSERT INTO posts (
           dc_id, gallery_id, category, title, author, author_ip, date,
           views, likes, comments_count, content_html, images_json, original_url,
-          has_image, has_video, is_mobile_written, comments_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          has_image, has_video, is_mobile_written, comments_json, archived_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(dc_id) DO UPDATE SET
           gallery_id = excluded.gallery_id,
           category = excluded.category,
@@ -193,7 +250,8 @@ export const dbApi = {
           has_image = excluded.has_image,
           has_video = excluded.has_video,
           is_mobile_written = excluded.is_mobile_written,
-          comments_json = excluded.comments_json
+          comments_json = excluded.comments_json,
+          archived_at = excluded.archived_at
         RETURNING id
       `,
       args: [
@@ -213,7 +271,8 @@ export const dbApi = {
         post.has_image ? 1 : 0,
         post.has_video ? 1 : 0,
         post.is_mobile_written ? 1 : 0,
-        post.comments_json
+        post.comments_json,
+        archivedAt
       ]
     });
 
@@ -292,7 +351,7 @@ export const dbApi = {
       countSql += whereStr;
     }
 
-    sql += " ORDER BY id DESC";
+    sql += " ORDER BY archived_at DESC, id DESC";
 
     if (page && limit) {
       const offset = (page - 1) * limit;
