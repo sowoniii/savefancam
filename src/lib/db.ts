@@ -77,10 +77,69 @@ export const libsqlClient = createClient({
       }
     }
 
+    // 🛠️ Smart Auto-Migration: If the database exists but has the old single 'dc_id' UNIQUE constraint,
+    // safely migrate the schema to composite UNIQUE(gallery_id, dc_id) while preserving 100% of existing rows!
+    const tableCheck = await libsqlClient.execute(`
+      SELECT sql FROM sqlite_master WHERE type='table' AND name='posts'
+    `);
+    
+    if (tableCheck.rows.length > 0) {
+      const sql = String(tableCheck.rows[0].sql || "");
+      if (sql.includes("dc_id TEXT UNIQUE") || !sql.includes("UNIQUE(gallery_id, dc_id)")) {
+        console.log("🛠️ [Turso/SQLite] Outdated table schema detected. Commencing safe data-preserving migration...");
+        try {
+          await libsqlClient.execute("CREATE TABLE posts_backup AS SELECT * FROM posts");
+          await libsqlClient.execute("DROP TABLE posts");
+          
+          await libsqlClient.execute(`
+            CREATE TABLE posts (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              dc_id TEXT NOT NULL,
+              gallery_id TEXT NOT NULL,
+              category TEXT DEFAULT '일반',
+              title TEXT NOT NULL,
+              author TEXT NOT NULL,
+              author_ip TEXT,
+              date TEXT NOT NULL,
+              views INTEGER DEFAULT 0,
+              likes INTEGER DEFAULT 0,
+              comments_count INTEGER DEFAULT 0,
+              content_html TEXT NOT NULL,
+              images_json TEXT NOT NULL,
+              original_url TEXT NOT NULL,
+              has_image INTEGER DEFAULT 0,
+              has_video INTEGER DEFAULT 0,
+              is_mobile_written INTEGER DEFAULT 0,
+              comments_json TEXT NOT NULL,
+              archived_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(gallery_id, dc_id)
+            )
+          `);
+          
+          await libsqlClient.execute(`
+            INSERT INTO posts (
+              id, dc_id, gallery_id, category, title, author, author_ip, date,
+              views, likes, comments_count, content_html, images_json, original_url,
+              has_image, has_video, is_mobile_written, comments_json, archived_at
+            ) SELECT 
+              id, dc_id, gallery_id, category, title, author, author_ip, date,
+              views, likes, comments_count, content_html, images_json, original_url,
+              has_image, has_video, is_mobile_written, comments_json, archived_at
+            FROM posts_backup
+          `);
+          
+          await libsqlClient.execute("DROP TABLE posts_backup");
+          console.log("✅ [Turso/SQLite] Database schema upgraded to composite UNIQUE(gallery_id, dc_id) with 100% data preserved!");
+        } catch (migErr) {
+          console.error("❌ [Turso/SQLite] Failed to migrate database schema:", migErr);
+        }
+      }
+    }
+
     await libsqlClient.execute(`
       CREATE TABLE IF NOT EXISTS posts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        dc_id TEXT UNIQUE NOT NULL,
+        dc_id TEXT NOT NULL,
         gallery_id TEXT NOT NULL,
         category TEXT DEFAULT '일반',
         title TEXT NOT NULL,
@@ -97,7 +156,8 @@ export const libsqlClient = createClient({
         has_video INTEGER DEFAULT 0,
         is_mobile_written INTEGER DEFAULT 0,
         comments_json TEXT NOT NULL,
-        archived_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        archived_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(gallery_id, dc_id)
       )
     `);
 
@@ -237,7 +297,7 @@ export const dbApi = {
     const archivedAt = parseDcDateToSqliteDatetime(post.date);
 
     // 1. Immediately insert the post with the original DC Inside image URLs
-    // Using ON CONFLICT(dc_id) DO UPDATE for perfect upsert support in SQLite!
+    // Using ON CONFLICT(gallery_id, dc_id) DO UPDATE for perfect upsert support in SQLite!
     const upsertResult = await libsqlClient.execute({
       sql: `
         INSERT INTO posts (
@@ -245,7 +305,7 @@ export const dbApi = {
           views, likes, comments_count, content_html, images_json, original_url,
           has_image, has_video, is_mobile_written, comments_json, archived_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(dc_id) DO UPDATE SET
+        ON CONFLICT(gallery_id, dc_id) DO UPDATE SET
           gallery_id = excluded.gallery_id,
           category = excluded.category,
           title = excluded.title,
