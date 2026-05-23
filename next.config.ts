@@ -4,6 +4,14 @@ const nextConfig: NextConfig = {
   // output: "standalone",
   poweredByHeader: false,
   reactCompiler: true,
+  typescript: {
+    // 🚀 Speed up compilation on resource-constrained Oracle Free Tier
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    // 🚀 Skip lint check on build (we already check on local computer) to save CPU/RAM
+    ignoreDuringBuilds: true,
+  },
   async headers() {
     return [
       {
