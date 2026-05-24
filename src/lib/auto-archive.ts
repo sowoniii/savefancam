@@ -4,6 +4,7 @@ import { dbApi, libsqlClient } from "./db";
 let isGeneralScanning = false;
 let isLiteratureScanning = false;
 let generalCycleCount = 0;
+let litRoundRobinIndex = 0;
 
 type GalleryListPost = {
   url: string;
@@ -140,6 +141,131 @@ async function processPostsList(posts: GalleryListPost[], queueName: string) {
   }
 }
 
+/**
+ * ⚡ Custom processing engine for the Literature Queue.
+ * Bypasses DC Inside's aggressive list-page caching of likes/recommendations
+ * by performing a safe round-robin active fetch of post details.
+ */
+async function processLiteraturePostsList(posts: GalleryListPost[]) {
+  if (posts.length === 0) return;
+
+  const dcIds = posts.map(p => p.dc_id);
+  const dbPostsMap = new Map<string, { comments_count: number; likes: number }>();
+
+  try {
+    const placeholders = dcIds.map(() => "?").join(", ");
+    const checkResult = await libsqlClient.execute({
+      sql: `SELECT dc_id, comments_count, likes FROM posts WHERE dc_id IN (${placeholders})`,
+      args: dcIds
+    });
+    for (const row of checkResult.rows) {
+      if (row.dc_id !== null && row.dc_id !== undefined) {
+        dbPostsMap.set(String(row.dc_id), {
+          comments_count: Number(row.comments_count ?? 0),
+          likes: Number(row.likes ?? 0)
+        });
+      }
+    }
+  } catch (err: unknown) {
+    console.error(`[Literature Queue] DB batch check error:`, errorMessage(err));
+    return;
+  }
+
+  const newPosts: typeof posts = [];
+  const existingPosts: typeof posts = [];
+
+  for (const post of posts) {
+    if (!dbPostsMap.has(post.dc_id)) {
+      newPosts.push(post);
+    } else {
+      existingPosts.push(post);
+    }
+  }
+
+  // 1. Process genuinely brand new posts immediately!
+  if (newPosts.length > 0) {
+    console.log(`[Literature Queue] Archiving ${newPosts.length} new posts...`);
+    newPosts.reverse(); // oldest first
+    await runWithConcurrency(newPosts, POST_PROCESS_CONCURRENCY, async (post) => {
+      console.log(`[Literature Queue] Archiving: ID ${post.dc_id} - ${post.url}`);
+      try {
+        const postData = await scrapeDcPost(post.url);
+        const insertedId = await dbApi.insertPost(postData);
+        console.log(`✅ [Literature Queue] Successfully archived new post "${postData.title}" as ID: ${insertedId}`);
+        
+        // Trigger Discord webhook for new post
+        try {
+          const { sendDiscordNewPostAlert } = await import("./discord");
+          await sendDiscordNewPostAlert(postData);
+        } catch (discordErr) {
+          console.error(`[Literature Queue] Failed to dispatch Discord Webhook:`, errorMessage(discordErr));
+        }
+
+        // ISR Revalidation
+        if (process.env.NODE_ENV === "production") {
+          try {
+            const { revalidatePath } = await import("next/cache");
+            revalidatePath("/");
+            revalidatePath(`/post/${post.dc_id}`);
+          } catch {}
+        }
+        await sleep(randomDelay(POST_SCRAPE_DELAY_MIN_MS, POST_SCRAPE_DELAY_MAX_MS));
+      } catch (e: unknown) {
+        console.error(`[Literature Queue] Failed to process post ${post.url}:`, errorMessage(e));
+      }
+    });
+  }
+
+  // 2. Active Round-Robin check for existing posts
+  // Scrapes the detail page directly to check for fresh likes/comments since DC Inside list pages are cached!
+  const N = 12; // Scan the top 12 active posts
+  const activeExisting = existingPosts.slice(0, N);
+  if (activeExisting.length > 0) {
+    const index = litRoundRobinIndex % activeExisting.length;
+    litRoundRobinIndex = (litRoundRobinIndex + 1) % activeExisting.length;
+    const postToCheck = activeExisting[index];
+    
+    console.log(`🔍 [Literature Round-Robin] Active check for post ${postToCheck.dc_id} - ${postToCheck.url}`);
+    try {
+      const postData = await scrapeDcPost(postToCheck.url);
+      const dbPost = dbPostsMap.get(postToCheck.dc_id)!;
+      
+      if (postData.comments_count !== dbPost.comments_count || postData.likes !== dbPost.likes) {
+        console.log(`🔥 [Literature Queue] Post ${postToCheck.dc_id} has updates! Comments DB: ${dbPost.comments_count} -> Live: ${postData.comments_count} | Likes DB: ${dbPost.likes} -> Live: ${postData.likes}`);
+        
+        // Keep old likes for milestone check
+        const oldLikes = dbPost.likes;
+        const insertedId = await dbApi.insertPost(postData);
+        console.log(`✅ [Literature Queue] Successfully updated post "${postData.title}" as ID: ${insertedId}`);
+
+        // Trigger Discord Webhook Milestone Alert if likes changed
+        try {
+          const { sendDiscordMilestoneAlert } = await import("./discord");
+          const oldMilestone = Math.floor(oldLikes / 10);
+          const newMilestone = Math.floor(postData.likes / 10);
+          if (newMilestone > oldMilestone && newMilestone > 0) {
+            const milestone = newMilestone * 10;
+            await sendDiscordMilestoneAlert(postData, oldLikes, milestone);
+          }
+        } catch (discordErr) {
+          console.error(`[Literature Queue] Failed to dispatch Discord Webhook:`, errorMessage(discordErr));
+        }
+
+        // ISR Revalidation
+        if (process.env.NODE_ENV === "production") {
+          try {
+            const { revalidatePath } = await import("next/cache");
+            revalidatePath("/");
+            revalidatePath(`/post/${postToCheck.dc_id}`);
+          } catch {}
+        }
+      }
+    } catch (e: unknown) {
+      console.error(`[Literature Queue] Failed to update post ${postToCheck.url}:`, errorMessage(e));
+    }
+  }
+}
+
 // 1. ⚡ Queue 1: General Tab Queue (전체 탭 추적 큐)
 // Tracks Page 1-3 of the main list on a smart cycle (Page 1 every 3s, Page 2 every 10 cycles, Page 3 every 20 cycles).
 async function scanGeneralTab() {
@@ -193,7 +319,7 @@ async function scanLiteratureTab() {
 
   try {
     const posts = await scrapeDcGalleryList(galleryId, isMini, litHead, 1);
-    await processPostsList(posts, "Literature Queue");
+    await processLiteraturePostsList(posts);
   } catch (error: unknown) {
     console.error("[Literature Queue] Error in polling loop:", errorMessage(error));
   } finally {
