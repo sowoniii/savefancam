@@ -46,18 +46,19 @@ async function processPostsList(posts: GalleryListPost[], queueName: string) {
   if (posts.length === 0) return;
 
   const dcIds = posts.map(p => p.dc_id);
-  const dbPostsMap = new Map<string, { comments_count: number }>();
+  const dbPostsMap = new Map<string, { comments_count: number; likes: number }>();
 
   try {
     const placeholders = dcIds.map(() => "?").join(", ");
     const checkResult = await libsqlClient.execute({
-      sql: `SELECT dc_id, comments_count FROM posts WHERE dc_id IN (${placeholders})`,
+      sql: `SELECT dc_id, comments_count, likes FROM posts WHERE dc_id IN (${placeholders})`,
       args: dcIds
     });
     for (const row of checkResult.rows) {
       if (row.dc_id !== null && row.dc_id !== undefined) {
         dbPostsMap.set(String(row.dc_id), {
-          comments_count: Number(row.comments_count ?? 0)
+          comments_count: Number(row.comments_count ?? 0),
+          likes: Number(row.likes ?? 0)
         });
       }
     }
@@ -72,10 +73,10 @@ async function processPostsList(posts: GalleryListPost[], queueName: string) {
       // 1. Genuinely brand new post -> Archive!
       postsToProcess.push(post);
     } else {
-      // 2. Existing post -> Update if comment count has changed!
+      // 2. Existing post -> Update if comment count OR likes count has changed!
       const dbPost = dbPostsMap.get(post.dc_id)!;
-      if (post.comment_count !== dbPost.comments_count) {
-        console.log(`🔥 [${queueName}] Post ${post.dc_id} has new comments! Comments DB: ${dbPost.comments_count} -> List: ${post.comment_count}`);
+      if (post.comment_count !== dbPost.comments_count || post.likes !== dbPost.likes) {
+        console.log(`🔥 [${queueName}] Post ${post.dc_id} has new updates! Comments DB: ${dbPost.comments_count} -> List: ${post.comment_count} | Likes DB: ${dbPost.likes} -> List: ${post.likes}`);
         postsToProcess.push(post);
       }
     }
@@ -90,8 +91,34 @@ async function processPostsList(posts: GalleryListPost[], queueName: string) {
       console.log(`[${queueName}] ${isUpdate ? "Updating" : "Archiving"}: ID ${post.dc_id} - ${post.url}`);
       try {
         const postData = await scrapeDcPost(post.url);
+        
+        // 🔔 Keep the old likes value for milestone check before insertPost overwrites it!
+        const oldLikes = isUpdate ? (dbPostsMap.get(post.dc_id)?.likes ?? 0) : 0;
+        
         const insertedId = await dbApi.insertPost(postData);
         console.log(`✅ [${queueName}] Successfully ${isUpdate ? "updated" : "archived"} post "${postData.title}" as ID: ${insertedId}`);
+        
+        // 🔔 Discord Webhook Trigger for Literature Posts
+        const isLiterature = postData.category?.includes("문학") || post.category?.includes("문학");
+        if (isLiterature) {
+          try {
+            const { sendDiscordNewPostAlert, sendDiscordMilestoneAlert } = await import("./discord");
+            if (!isUpdate) {
+              // Genuinely new literature post archived!
+              await sendDiscordNewPostAlert(postData);
+            } else {
+              // Check 10, 20, 30 milestone likes
+              const oldMilestone = Math.floor(oldLikes / 10);
+              const newMilestone = Math.floor(postData.likes / 10);
+              if (newMilestone > oldMilestone && newMilestone > 0) {
+                const milestone = newMilestone * 10;
+                await sendDiscordMilestoneAlert(postData, oldLikes, milestone);
+              }
+            }
+          } catch (discordErr) {
+            console.error(`[${queueName}] Failed to dispatch Discord Webhook:`, errorMessage(discordErr));
+          }
+        }
         
         // Trigger On-Demand ISR Cache Revalidation (guarantees 0ms page loads with 100% fresh data in production)
         if (process.env.NODE_ENV === "production") {
