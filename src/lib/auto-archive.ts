@@ -253,7 +253,7 @@ async function scanLiteratureTab() {
     }
 
     // 2. Also try to catch any brand new literature posts from the list page (if the list tab is valid)
-    const litHead = process.env.AUTO_ARCHIVE_LIT_HEAD || "40";
+    const litHead = process.env.AUTO_ARCHIVE_LIT_HEAD || "60";
     const isMini = process.env.AUTO_ARCHIVE_IS_MINI !== "false";
     try {
       const posts = await scrapeDcGalleryList(galleryId, isMini, litHead, 1);
