@@ -41,7 +41,7 @@ function saveImageToLocalStorage(buffer: Buffer, originalUrl: string): string {
 
     // Generate high-entropy secure unique filename to prevent collisions
     const fileName = `${Date.now()}_${crypto.randomBytes(4).toString("hex")}.${ext}`;
-    const filePath = path.join(uploadDir, fileName);
+    const filePath = path.join(/* webpackIgnore: true */ /* turbopackIgnore: true */ uploadDir, fileName);
 
     fs.writeFileSync(filePath, buffer);
     console.log(`💾 [Local Backup] Successfully saved image to Oracle disk: /uploads/${fileName}`);
