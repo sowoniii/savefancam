@@ -55,7 +55,7 @@ function getIsoTimestamp(dateStr: string): string {
     // Assuming KST (+09:00) for DC Inside dates like "2024-05-25 15:30:00"
     const d = new Date(dateStr.replace(" ", "T") + "+09:00");
     if (!isNaN(d.getTime())) return d.toISOString();
-  } catch (e) {}
+  } catch (e) { }
   return new Date().toISOString();
 }
 
@@ -65,7 +65,7 @@ function getIsoTimestamp(dateStr: string): string {
 export async function sendDiscordNewPostAlert(post: Omit<Post, 'id' | 'archived_at'>) {
   const postUrl = `https://fangall.com/post/${post.dc_id}`;
   const imageUrl = getFirstImageUrl(post);
-  
+
   const embed: any = {
     url: postUrl,
     color: 3066993,
@@ -98,32 +98,18 @@ export async function sendDiscordNewPostAlert(post: Omit<Post, 'id' | 'archived_
 export async function sendDiscordMilestoneAlert(post: Omit<Post, 'id' | 'archived_at'>, oldLikes: number, milestone: number) {
   const postUrl = `https://fangall.com/post/${post.dc_id}`;
   const imageUrl = getFirstImageUrl(post);
-  
+
   const embed: any = {
-    title: `🎉 [칭찬갤 문학관] 개추 ${milestone}개 돌파!`,
-    description: `🚀 **아카이브에 보관된 문학작품이 개추 \`${milestone}\`개를 넘었습니다!**\n\n[아카이브에서 명작 다시 감상하기 ➡️](${postUrl})`,
+    description: `개추 ${milestone}개 돌파`,
     url: postUrl,
     color: 3447003, // Bright Blue (#3498db)
-    fields: [
-      {
-        name: "📖 제목",
-        value: `\`${post.title}\``,
-        inline: false
-      },
-      {
-        name: "✍️ 작가",
-        value: post.author_ip ? `${post.author} (${post.author_ip})` : post.author,
-        inline: true
-      },
-      {
-        name: "📊 현재 스펙",
-        value: `👍 개추 **${post.likes}개** (이전: ${oldLikes}개)\n💬 댓글 **${post.comments_count}개**\n👁️ 조회수 **${post.views}회**`,
-        inline: true
-      }
-    ],
+    author: {
+      name: post.title,
+      url: postUrl,
+      icon_url: "https://docs-assets.developer.apple.com/published/bdb39aa180616a1f3ed9ad687a7d165b/icons-symbols-meaning-like~dark%402x.png"
+    },
     footer: {
-      text: "칭찬 미니 갤러리 영구 아카이브 시스템",
-      icon_url: "https://nstatic.dcinside.com/dgn/gallery/images/broken_image.png"
+      text: "등록 시간"
     },
     timestamp: getIsoTimestamp(post.date)
   };
@@ -133,7 +119,7 @@ export async function sendDiscordMilestoneAlert(post: Omit<Post, 'id' | 'archive
   }
 
   const payload = {
-    content: `📢 @here **문학 명작 탄생! 개추 돌파 축하합니다!**`,
+    content: `📢 @here **개추 알림**`,
     embeds: [embed]
   };
 
