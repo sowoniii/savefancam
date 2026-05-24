@@ -11,10 +11,10 @@ const DUMMY_IMAGE_MD5S = new Set([
 // 💾 Helper to save image to our Oracle cloud VM local storage (public/uploads/)
 function saveImageToLocalStorage(buffer: Buffer, originalUrl: string): string {
   try {
-    // 🔒 Prevent Turbopack from scanning 10,000+ local images during build by using dynamic path segments
-    const publicSeg = "public";
-    const uploadsSeg = "uploads";
-    const uploadDir = path.join(process.cwd(), publicSeg, uploadsSeg);
+    // 🔒 100% Prevent Turbopack from scanning local images by injecting dynamic runtime-only process.env segments
+    const publicFolder = process.env.PUBLIC_DIR_NAME || "public";
+    const uploadsFolder = process.env.UPLOADS_DIR_NAME || "uploads";
+    const uploadDir = path.join(process.cwd(), publicFolder, uploadsFolder);
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
