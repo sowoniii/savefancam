@@ -3,9 +3,11 @@
 import React, { useState } from 'react';
 import { toPng } from 'html-to-image';
 
-const fetchBase64Image = async (url: string): Promise<string> => {
+const fetchBase64Image = async (url: string, timeoutMs = 5000): Promise<string> => {
   try {
-    const response = await fetch(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timeout));
     const blob = await response.blob();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -28,7 +30,7 @@ let cachedFontEmbedCSS = '';
 
 const CAPTURE_CSS_WIDTH = 480;
 const CAPTURE_PIXEL_RATIO = 2;
-const MAX_CANVAS_DIMENSION = 32767;
+const MAX_CANVAS_DIMENSION = 16384; // Safe for Safari, iPhones, iPads, and mobile browsers
 const MAX_CAPTURE_SLICE_HEIGHT = Math.floor(MAX_CANVAS_DIMENSION / CAPTURE_PIXEL_RATIO) - 16;
 const MIN_CAPTURE_SLICE_HEIGHT = 1024;
 
@@ -174,11 +176,21 @@ export default function CaptureButton({ title, postId }: CaptureButtonProps) {
                   clonedImg.removeAttribute('srcset');
                   clonedImg.removeAttribute('sizes');
                   clonedImg.removeAttribute('loading');
+                  return;
                 }
               } catch (err) {
                 console.error('Failed to fetch fallback image base64:', err);
               }
             }
+
+            // 3-3. Critical Safety Fallback: If both canvas extraction and network fallback fetch fail
+            // (or time out), replace the image source with a 1x1 transparent spacer GIF.
+            // This prevents html-to-image from making failed network requests for broken images,
+            // which would trigger unhandled runtime exceptions and completely crash the screen capture!
+            clonedImg.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+            clonedImg.removeAttribute('srcset');
+            clonedImg.removeAttribute('sizes');
+            clonedImg.removeAttribute('loading');
           }
         })
       );
