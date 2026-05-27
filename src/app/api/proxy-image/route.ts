@@ -47,37 +47,11 @@ export async function GET(request: NextRequest) {
       return new NextResponse('Empty response body from DC Inside', { status: 500 });
     }
 
-    // 1. Read the very first chunk of the stream to inspect binary magic bytes.
-    // This allows us to detect GIF, WebP, PNG, JPEG, and MP4 formats with 100% accuracy,
-    // even if DC Inside returns no file extensions and generic application/octet-stream headers.
-    const reader = response.body.getReader();
-    const { value, done } = await reader.read();
-
     let contentType = response.headers.get('content-type') || 'application/octet-stream';
 
-    // If it's a generic octet-stream or if we want to guarantee accuracy, inspect magic bytes
-    if (contentType === 'application/octet-stream' && value && value.length >= 4) {
-      const hex = Array.from(value.slice(0, 12))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('')
-        .toLowerCase();
-
-      if (hex.startsWith('47494638')) { // GIF87a / GIF89a
-        contentType = 'image/gif';
-      } else if (hex.startsWith('89504e47')) { // PNG
-        contentType = 'image/png';
-      } else if (hex.startsWith('ffd8ff')) { // JPEG
-        contentType = 'image/jpeg';
-      } else if (hex.startsWith('52494646') && hex.substring(16, 24) === '57454250') { // RIFF ... WEBP
-        contentType = 'image/webp';
-      } else if (hex.startsWith('1a45dfa3')) { // WebM
-        contentType = 'video/webm';
-      } else if (hex.substring(8, 16) === '66747970') { // ftyp (MP4)
-        contentType = 'video/mp4';
-      }
-    }
-
-    // 2. Fallback to filename/header inspection if magic bytes didn't resolve it
+    // 1. First, try to determine the type using Content-Disposition or the URL file extension.
+    // DC Inside links always include "filename=..." in Content-Disposition.
+    // This allows us to resolve the type instantly WITHOUT locking response.body or reading magic bytes.
     if (contentType === 'application/octet-stream') {
       const contentDisp = response.headers.get('content-disposition') || '';
       const filenameMatch = contentDisp.match(/filename="?([^";\n]+)"?/i) || url.match(/\/([^/?#]+)(?:[?#]|$)/);
@@ -105,33 +79,68 @@ export async function GET(request: NextRequest) {
     headers.set('Access-Control-Allow-Origin', '*');
     headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
 
-    // 3. Reconstruct a new ReadableStream using the first chunk and the remaining reader stream
-    // to preserve memory-efficient response streaming (no OOM crashes for large GIFs/videos).
-    const stream = new ReadableStream({
-      async start(controller) {
-        if (value) {
-          controller.enqueue(value);
-        }
-        if (done) {
-          controller.close();
-          return;
-        }
-        try {
-          while (true) {
-            const { value: nextValue, done: nextDone } = await reader.read();
-            if (nextDone) {
-              controller.close();
-              break;
-            }
-            controller.enqueue(nextValue);
-          }
-        } catch (err) {
-          controller.error(err);
-        }
-      }
-    });
+    let responseStream: ReadableStream<Uint8Array> = response.body;
 
-    return new NextResponse(stream, {
+    // 2. Only if the content-type is still application/octet-stream (last-resort fallback),
+    // read the first chunk to inspect magic bytes. In 99.99% of cases, we skip this completely,
+    // which avoids Bun's custom ReadableStream streaming issues and provides 100% reliable direct piping.
+    if (contentType === 'application/octet-stream') {
+      try {
+        const reader = response.body.getReader();
+        const { value, done } = await reader.read();
+
+        if (value && value.length >= 4) {
+          const hex = Array.from(value.slice(0, 12))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('')
+            .toLowerCase();
+
+          if (hex.startsWith('47494638')) { // GIF87a / GIF89a
+            contentType = 'image/gif';
+          } else if (hex.startsWith('89504e47')) { // PNG
+            contentType = 'image/png';
+          } else if (hex.startsWith('ffd8ff')) { // JPEG
+            contentType = 'image/jpeg';
+          } else if (hex.startsWith('52494646') && hex.substring(16, 24) === '57454250') { // RIFF ... WEBP
+            contentType = 'image/webp';
+          } else if (hex.startsWith('1a45dfa3')) { // WebM
+            contentType = 'video/webm';
+          } else if (hex.substring(8, 16) === '66747970') { // ftyp (MP4)
+            contentType = 'video/mp4';
+          }
+          headers.set('Content-Type', contentType);
+        }
+
+        // Reconstruct stream since we read the first chunk
+        responseStream = new ReadableStream({
+          async start(controller) {
+            if (value) {
+              controller.enqueue(value);
+            }
+            if (done) {
+              controller.close();
+              return;
+            }
+            try {
+              while (true) {
+                const { value: nextValue, done: nextDone } = await reader.read();
+                if (nextDone) {
+                  controller.close();
+                  break;
+                }
+                controller.enqueue(nextValue);
+              }
+            } catch (err) {
+              controller.error(err);
+            }
+          }
+        });
+      } catch (e) {
+        console.error('Failed to read magic bytes fallback:', e);
+      }
+    }
+
+    return new NextResponse(responseStream, {
       status: response.status,
       headers,
     });
