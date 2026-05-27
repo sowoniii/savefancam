@@ -30,7 +30,7 @@ let cachedFontEmbedCSS = '';
 
 const CAPTURE_CSS_WIDTH = 480;
 const CAPTURE_PIXEL_RATIO = 2;
-const MAX_CANVAS_DIMENSION = 16384; // Safe for Safari, iPhones, iPads, and mobile browsers
+const MAX_CANVAS_DIMENSION = 32767; // Restored to 32767 to support 32734px max capture length as requested
 const MAX_CAPTURE_SLICE_HEIGHT = Math.floor(MAX_CANVAS_DIMENSION / CAPTURE_PIXEL_RATIO) - 16;
 const MIN_CAPTURE_SLICE_HEIGHT = 1024;
 
