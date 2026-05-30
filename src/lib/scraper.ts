@@ -256,7 +256,7 @@ export async function scrapeDcPost(url: string) {
   };
 }
 
-export async function scrapeDcGalleryList(galleryId: string, isMini: boolean = true, searchHead?: string, page: number = 1) {
+export async function scrapeDcGalleryList(galleryId: string, isMini: boolean = true, searchHead?: string, page: number = 1, listNum: number = 100) {
   const typePrefix = isMini ? "mini" : "board";
   let targetUrl = `https://m.dcinside.com/${typePrefix}/${galleryId}`;
   
@@ -271,6 +271,9 @@ export async function scrapeDcGalleryList(galleryId: string, isMini: boolean = t
   }
   if (page > 1) {
     queryParams.set("page", String(page));
+  }
+  if (listNum > 0) {
+    queryParams.set("list_num", String(listNum));
   }
   
   const queryStr = queryParams.toString();

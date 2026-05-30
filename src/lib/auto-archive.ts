@@ -317,9 +317,25 @@ async function scanLiteratureTab() {
     const litHead = process.env.AUTO_ARCHIVE_LIT_HEAD || "60";
     const isMini = process.env.AUTO_ARCHIVE_IS_MINI !== "false";
     
-    console.log(`[Literature Queue] 🔍 Scanning literature tab list...`);
-    const posts = await scrapeDcGalleryList(galleryId, isMini, litHead, 1);
-    await processPostsList(posts, "Literature Queue");
+    console.log(`[Literature Queue] 🔍 Scanning literature tab list (fetching up to 100 posts)...`);
+    
+    // Robust Hybrid strategy: Fetch page 1 and page 2 in parallel to guarantee we capture 
+    // at least 100 posts even if DC Inside mobile ignores list_num=100.
+    const [page1, page2] = await Promise.all([
+      scrapeDcGalleryList(galleryId, isMini, litHead, 1, 100),
+      scrapeDcGalleryList(galleryId, isMini, litHead, 2, 100)
+    ]);
+
+    // Merge and deduplicate by dc_id to prevent any redundant sweeps
+    const mergedMap = new Map<string, typeof page1[number]>();
+    for (const post of [...page1, ...page2]) {
+      mergedMap.set(post.dc_id, post);
+    }
+    
+    const uniquePosts = Array.from(mergedMap.values()).slice(0, 100);
+    console.log(`[Literature Queue] Deduplicated and finalized ${uniquePosts.length} posts to scan.`);
+
+    await processPostsList(uniquePosts, "Literature Queue");
   } catch (error: unknown) {
     console.error("[Literature Queue] Error in literature polling loop:", errorMessage(error));
   } finally {
