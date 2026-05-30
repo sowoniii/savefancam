@@ -122,31 +122,33 @@ async function processPostsList(posts: GalleryListPost[], queueName: string) {
           }
         }
 
-        // 🔔 Web Push Notification Trigger (All Posts)
-        try {
-          const { sendWebPushNotification } = await import("./web-push");
-          if (!isUpdate) {
-            // Genuinely new post archived!
-            await sendWebPushNotification(
-              "🔔 아카이브 신규 등록!",
-              `[${postData.category || '일반'}] ${postData.title} (${postData.author})`,
-              `/post/${postData.dc_id}`
-            );
-          } else {
-            // Check milestone likes (개추 알림)
-            const oldMilestone = Math.floor(oldLikes / 10);
-            const newMilestone = Math.floor(postData.likes / 10);
-            if (newMilestone > oldMilestone && newMilestone > 0) {
-              const milestone = newMilestone * 10;
+        // 🔔 Web Push Notification Trigger (Literature Posts Only)
+        if (isLiterature) {
+          try {
+            const { sendWebPushNotification } = await import("./web-push");
+            if (!isUpdate) {
+              // Genuinely new post archived!
               await sendWebPushNotification(
-                `🔥 개추 돌파! (${milestone}개)`,
-                `"${postData.title}" 글이 추천 ${milestone}개를 돌파했습니다!`,
+                "🔔 아카이브 신규 등록!",
+                `[${postData.category || '일반'}] ${postData.title} (${postData.author})`,
                 `/post/${postData.dc_id}`
               );
+            } else {
+              // Check milestone likes (개추 알림)
+              const oldMilestone = Math.floor(oldLikes / 10);
+              const newMilestone = Math.floor(postData.likes / 10);
+              if (newMilestone > oldMilestone && newMilestone > 0) {
+                const milestone = newMilestone * 10;
+                await sendWebPushNotification(
+                  `🔥 개추 돌파! (${milestone}개)`,
+                  `"${postData.title}" 글이 추천 ${milestone}개를 돌파했습니다!`,
+                  `/post/${postData.dc_id}`
+                );
+              }
             }
+          } catch (pushErr) {
+            console.error(`[${queueName}] Failed to dispatch Web Push:`, errorMessage(pushErr));
           }
-        } catch (pushErr) {
-          console.error(`[${queueName}] Failed to dispatch Web Push:`, errorMessage(pushErr));
         }
         
         // Trigger On-Demand ISR Cache Revalidation (guarantees 0ms page loads with 100% fresh data in production)
