@@ -560,5 +560,9 @@ export const dbApi = {
     } catch (err: unknown) {
       console.error("Turso removePushSubscription error:", errorMessage(err));
     }
+  },
+
+  invalidateCache: (dcId?: string): void => {
+    invalidateReadCaches(dcId);
   }
 };
