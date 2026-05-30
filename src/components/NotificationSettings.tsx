@@ -38,9 +38,12 @@ export default function NotificationSettings() {
 
   const checkSubscription = async () => {
     try {
-      const registration = await navigator.serviceWorker.ready;
-      const sub = await registration.pushManager.getSubscription();
-      setSubscription(sub);
+      // Use getRegistration() which resolves instantly instead of .ready which hangs on fresh systems
+      const registration = await navigator.serviceWorker.getRegistration("/");
+      if (registration) {
+        const sub = await registration.pushManager.getSubscription();
+        setSubscription(sub);
+      }
     } catch (e) {
       console.error("Error checking push subscription:", e);
     } finally {
@@ -60,11 +63,10 @@ export default function NotificationSettings() {
     setIsLoading(true);
 
     try {
-      await navigator.serviceWorker.register("/sw.js", {
+      // Register and use the returned registration object directly
+      const registration = await navigator.serviceWorker.register("/sw.js", {
         scope: "/",
       });
-
-      await navigator.serviceWorker.ready;
 
       const result = await Notification.requestPermission();
 
@@ -74,7 +76,6 @@ export default function NotificationSettings() {
         return;
       }
 
-      const registration = await navigator.serviceWorker.ready;
       const convertedVapidKey = urlBase64ToUint8Array(publicVapidKey);
       const sub = await registration.pushManager.subscribe({
         userVisibleOnly: true,
