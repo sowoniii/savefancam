@@ -9,7 +9,7 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "https://m.dcinside.com/dc/m/img/sp/sp_icon.png",
+      "src": "/dc/m/img/sp/sp_icon.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
