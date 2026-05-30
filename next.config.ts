@@ -8,10 +8,10 @@ const nextConfig: NextConfig = {
     // 🚀 Speed up compilation on resource-constrained Oracle Free Tier
     ignoreBuildErrors: true,
   },
-  // eslint: {
-  //   // 🚀 Skip lint check on build (we already check on local computer) to save CPU/RAM
-  //   ignoreDuringBuilds: true,
-  // },
+  experimental: {
+    // 🚀 Force single-threaded compilation to prevent Out-Of-Memory freezes on 1GB Oracle Cloud VM
+    cpus: 1,
+  },
   async headers() {
     return [
       {
