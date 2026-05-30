@@ -87,7 +87,7 @@ export default function NotificationSettings() {
       }
 
       setSubscription(sub);
-      alert("실시간 아카이브 웹 푸시 알림이 활성화되었습니다! 🔔");
+      alert("실시간 아카이브 웹 푸시 알림이 활성화되었습니다.");
     } catch (e: any) {
       console.error("Failed to subscribe to web push:", e);
       alert(`알림 설정 중 오류가 발생했습니다: ${e.message}`);
@@ -112,7 +112,7 @@ export default function NotificationSettings() {
       });
 
       setSubscription(null);
-      alert("아카이브 실시간 웹 푸시 알림이 해제되었습니다.");
+      alert("아카이브 웹 푸시 알림이 해제되었습니다.");
     } catch (e: any) {
       console.error("Failed to unsubscribe:", e);
       alert(`알림 해제 중 오류가 발생했습니다: ${e.message}`);
@@ -156,7 +156,7 @@ export default function NotificationSettings() {
           gap: "4px"
         }}
       >
-        <span>{isSubscribed ? "🔔 실시간 알림 중" : "🔕 실시간 알림 받기"}</span>
+        <span>{isSubscribed ? "실시간 알림 중" : "실시간 알림 받기"}</span>
       </button>
     </div>
   );
