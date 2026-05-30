@@ -223,10 +223,12 @@ async function scanLiteratureTab() {
   }
 
   try {
-    // 1. Perform a safe round-robin active fetch of post details directly using current database records.
-    // This is 100% independent of whether the gallery has a custom Literature tab (headid 40) or not!
+    // 1. Perform a safe parallel active fetch of the top 5 latest literature posts directly.
+    // Since 99% of active view, comment, and recommendation (개추) updates happen on the latest 5 posts,
+    // scanning all 5 in parallel on every cycle ensures virtually instant updates (within 4-5 seconds)
+    // instead of the slow 2-minute round-robin lag.
     const activeResult = await libsqlClient.execute({
-      sql: `SELECT dc_id, original_url, comments_count, likes, title FROM posts WHERE gallery_id = ? AND category LIKE '%문학%' ORDER BY id DESC LIMIT 20`,
+      sql: `SELECT dc_id, original_url, comments_count, likes, title FROM posts WHERE gallery_id = ? AND category LIKE '%문학%' ORDER BY id DESC LIMIT 5`,
       args: [galleryId]
     });
 
@@ -239,63 +241,64 @@ async function scanLiteratureTab() {
     }));
 
     if (activePosts.length > 0) {
-      const index = litRoundRobinIndex % activePosts.length;
-      litRoundRobinIndex = (litRoundRobinIndex + 1) % activePosts.length;
-      const postToCheck = activePosts[index];
-
-      console.log(`🔍 [Literature Round-Robin] Active check for post ${postToCheck.dc_id} - ${postToCheck.url}`);
-      try {
-        const postData = await scrapeDcPost(postToCheck.url);
-        
-        if (postData.comments_count !== postToCheck.comments_count || postData.likes !== postToCheck.likes) {
-          console.log(`🔥 [Literature Queue] Post ${postToCheck.dc_id} has updates! Comments DB: ${postToCheck.comments_count} -> Live: ${postData.comments_count} | Likes DB: ${postToCheck.likes} -> Live: ${postData.likes}`);
+      console.log(`🔍 [Literature Active Scan] Checking top ${activePosts.length} latest active literature posts...`);
+      
+      const promises = activePosts.map(async (postToCheck) => {
+        try {
+          const postData = await scrapeDcPost(postToCheck.url);
           
-          const oldLikes = postToCheck.likes;
-          const insertedId = await dbApi.insertPost(postData);
-          console.log(`✅ [Literature Queue] Successfully updated post "${postData.title}" as ID: ${insertedId}`);
+          if (postData.comments_count !== postToCheck.comments_count || postData.likes !== postToCheck.likes) {
+            console.log(`🔥 [Literature Queue] Post ${postToCheck.dc_id} has updates! Comments DB: ${postToCheck.comments_count} -> Live: ${postData.comments_count} | Likes DB: ${postToCheck.likes} -> Live: ${postData.likes}`);
+            
+            const oldLikes = postToCheck.likes;
+            const insertedId = await dbApi.insertPost(postData);
+            console.log(`✅ [Literature Queue] Successfully updated post "${postData.title}" as ID: ${insertedId}`);
 
-          // Trigger Discord Webhook Milestone Alert if likes changed
-          try {
-            const { sendDiscordMilestoneAlert } = await import("./discord");
-            const oldMilestone = Math.floor(oldLikes / 10);
-            const newMilestone = Math.floor(postData.likes / 10);
-            if (newMilestone > oldMilestone && newMilestone > 0) {
-              const milestone = newMilestone * 10;
-              await sendDiscordMilestoneAlert(postData, oldLikes, milestone);
-            }
-          } catch (discordErr) {
-            console.error(`[Literature Queue] Failed to dispatch Discord Webhook:`, errorMessage(discordErr));
-          }
-
-          // Trigger Web Push Milestone Alert if likes changed
-          try {
-            const { sendWebPushNotification } = await import("./web-push");
-            const oldMilestone = Math.floor(oldLikes / 10);
-            const newMilestone = Math.floor(postData.likes / 10);
-            if (newMilestone > oldMilestone && newMilestone > 0) {
-              const milestone = newMilestone * 10;
-              await sendWebPushNotification(
-                `🔥 개추 돌파! (${milestone}개)`,
-                `"${postData.title}" 글이 추천 ${milestone}개를 돌파했습니다!`,
-                `/post/${postData.dc_id}`
-              );
-            }
-          } catch (pushErr) {
-            console.error(`[Literature Queue] Failed to dispatch Web Push:`, errorMessage(pushErr));
-          }
-
-          // ISR Revalidation
-          if (process.env.NODE_ENV === "production") {
+            // Trigger Discord Webhook Milestone Alert if likes changed
             try {
-              const { revalidatePath } = await import("next/cache");
-              revalidatePath("/");
-              revalidatePath(`/post/${postToCheck.dc_id}`);
-            } catch {}
+              const { sendDiscordMilestoneAlert } = await import("./discord");
+              const oldMilestone = Math.floor(oldLikes / 10);
+              const newMilestone = Math.floor(postData.likes / 10);
+              if (newMilestone > oldMilestone && newMilestone > 0) {
+                const milestone = newMilestone * 10;
+                await sendDiscordMilestoneAlert(postData, oldLikes, milestone);
+              }
+            } catch (discordErr) {
+              console.error(`[Literature Queue] Failed to dispatch Discord Webhook:`, errorMessage(discordErr));
+            }
+
+            // Trigger Web Push Milestone Alert if likes changed
+            try {
+              const { sendWebPushNotification } = await import("./web-push");
+              const oldMilestone = Math.floor(oldLikes / 10);
+              const newMilestone = Math.floor(postData.likes / 10);
+              if (newMilestone > oldMilestone && newMilestone > 0) {
+                const milestone = newMilestone * 10;
+                await sendWebPushNotification(
+                  `🔥 개추 돌파! (${milestone}개)`,
+                  `"${postData.title}" 글이 추천 ${milestone}개를 돌파했습니다!`,
+                  `/post/${postData.dc_id}`
+                );
+              }
+            } catch (pushErr) {
+              console.error(`[Literature Queue] Failed to dispatch Web Push:`, errorMessage(pushErr));
+            }
+
+            // ISR Revalidation
+            if (process.env.NODE_ENV === "production") {
+              try {
+                const { revalidatePath } = await import("next/cache");
+                revalidatePath("/");
+                revalidatePath(`/post/${postToCheck.dc_id}`);
+              } catch {}
+            }
           }
+        } catch (e: unknown) {
+          console.error(`[Literature Queue] Failed to update post ${postToCheck.url}:`, errorMessage(e));
         }
-      } catch (e: unknown) {
-        console.error(`[Literature Queue] Failed to update post ${postToCheck.url}:`, errorMessage(e));
-      }
+      });
+
+      await Promise.all(promises);
     }
 
     // 2. Also try to catch any brand new literature posts from the list page (if the list tab is valid)
