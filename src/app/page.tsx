@@ -1,5 +1,6 @@
 import NextLink from "next/link";
 import { dbApi } from "@/lib/db";
+import NotificationSettings from "@/components/NotificationSettings";
 
 export const revalidate = 3;
 
@@ -25,7 +26,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
             <NextLink href="/" className="gall-tit-lnk">팬갤 아카이브</NextLink>
           </h3>
           <span className="mngall-tit"><span className="mnicon"><em>n</em></span></span>
-          <div className="rt">
+          <div className="rt" style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <NotificationSettings />
             <div className="gall-lnk-box">
               <NextLink href="/request" className="btn-write lnk">수동 아카이브</NextLink>
             </div>

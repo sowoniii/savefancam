@@ -161,6 +161,16 @@ export const libsqlClient = createClient({
       )
     `);
 
+    await libsqlClient.execute(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     await Promise.all([
       libsqlClient.execute(`
         CREATE INDEX IF NOT EXISTS idx_posts_category_id_desc ON posts(category, id DESC)
@@ -520,5 +530,35 @@ export const dbApi = {
 
     pendingPostByDcId.set(dcId, queryPromise);
     return queryPromise;
+  },
+
+  addPushSubscription: async (endpoint: string, p256dh: string, auth: string): Promise<void> => {
+    try {
+      await libsqlClient.execute({
+        sql: `
+          INSERT INTO push_subscriptions (endpoint, p256dh, auth)
+          VALUES (?, ?, ?)
+          ON CONFLICT(endpoint) DO UPDATE SET
+            p256dh = excluded.p256dh,
+            auth = excluded.auth
+        `,
+        args: [endpoint, p256dh, auth]
+      });
+      console.log(`🔔 Saved push subscription to DB: ${endpoint.substring(0, 40)}...`);
+    } catch (err: unknown) {
+      console.error("Turso addPushSubscription error:", errorMessage(err));
+    }
+  },
+
+  removePushSubscription: async (endpoint: string): Promise<void> => {
+    try {
+      await libsqlClient.execute({
+        sql: "DELETE FROM push_subscriptions WHERE endpoint = ?",
+        args: [endpoint]
+      });
+      console.log(`🗑️ Removed push subscription from DB: ${endpoint.substring(0, 40)}...`);
+    } catch (err: unknown) {
+      console.error("Turso removePushSubscription error:", errorMessage(err));
+    }
   }
 };
