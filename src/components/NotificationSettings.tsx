@@ -49,7 +49,14 @@ export default function NotificationSettings() {
   };
 
   const handleSubscribe = async () => {
-    if (!isSupported || !publicVapidKey) return;
+    if (!isSupported) {
+      alert("이 브라우저는 웹 푸시 알림을 지원하지 않거나 비보안 연결(HTTP) 상태입니다. 보안 연결(HTTPS) 주소로 다시 접속해 주세요.");
+      return;
+    }
+    if (!publicVapidKey) {
+      alert("알림 설정 오류: VAPID 공개 키가 누락되었습니다. (.env.local 파일을 수정한 후 터미널 개발 서버를 재시작했거나 서버 빌드 및 PM2 재시작을 했는지 확인해 주세요!)");
+      return;
+    }
     setIsLoading(true);
 
     try {
